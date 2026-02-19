@@ -2,6 +2,10 @@
 
 use std::fmt;
 
+// TODO:
+// - Implement type checking: it needs unification for 0-element arrays and
+//   boolean literals.
+
 /// A type.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Type {
@@ -27,20 +31,28 @@ pub enum Lit {
     /// Structure: `"{" (type lit ("," type lit)*)? "}"`
     Struct(Vec<(Type, Lit)>),
     /// Array: `"[" (type lit ("," type lit)*)? "]"`
-    Array(Type, Vec<Lit>),
+    Array(Vec<(Type, Lit)>),
     /// Boolean: `"0" | "1"`
     Bool(bool),
 }
 
 impl Lit {
-    /// Gets the type of this literal value.
-    pub fn ty(&self) -> Type {
+    /// Gets the type of this literal value, if it is not ambiguous.
+    pub fn ty(&self) -> Option<Type> {
         match self {
-            Lit::I16(_) => Type::I16,
-            Lit::Null => Type::Ptr,
-            Lit::Struct(fields) => Type::Struct(fields.iter().map(|(ty, _)| ty.clone()).collect()),
-            Lit::Array(ty, elems) => Type::Array(elems.len(), Box::new(ty.clone())),
-            Lit::Bool(_) => Type::Bool,
+            Lit::I16(_) => Some(Type::I16),
+            Lit::Null => Some(Type::Ptr),
+            Lit::Struct(fields) => Some(Type::Struct(
+                fields.iter().map(|(ty, _)| ty.clone()).collect(),
+            )),
+            Lit::Array(elems) => {
+                if let Some((ty, _)) = elems.first() {
+                    Some(Type::Array(elems.len(), Box::new(ty.clone())))
+                } else {
+                    None
+                }
+            }
+            Lit::Bool(_) => Some(Type::Bool),
         }
     }
 
@@ -56,7 +68,9 @@ impl Lit {
                         .zip(types)
                         .all(|((lit_ty, _), ty)| lit_ty == ty)
             }
-            (Lit::Array(lit_ty, elems), Type::Array(n, ty)) => lit_ty == &**ty && elems.len() == *n,
+            (Lit::Array(elems), Type::Array(n, ty)) => {
+                elems.len() == *n && elems.first().is_none_or(|(first_ty, _)| first_ty == &**ty)
+            }
             (Lit::Bool(_), Type::Bool) => true,
             _ => false,
         }
@@ -67,7 +81,9 @@ impl Lit {
         match self {
             Lit::I16(_) | Lit::Null | Lit::Bool(_) => true,
             Lit::Struct(fields) => fields.iter().all(|(ty, field)| field.has_type(ty)),
-            Lit::Array(ty, elems) => elems.iter().all(|elem| elem.has_type(ty)),
+            Lit::Array(elems) => elems
+                .first()
+                .is_none_or(|(ty, _)| elems.iter().all(|(_, lit)| lit.has_type(ty))),
         }
     }
 }
@@ -108,12 +124,12 @@ impl fmt::Display for Lit {
                 }
                 f.write_str("}")
             }
-            Lit::Array(ty, elems) => {
+            Lit::Array(elems) => {
                 f.write_str("[")?;
-                if let [first, rest @ ..] = elems.as_slice() {
-                    write!(f, "{ty} {first}")?;
-                    for elem in rest {
-                        write!(f, ", {ty} {elem}")?;
+                if let [(first_ty, first_lit), rest @ ..] = elems.as_slice() {
+                    write!(f, "{first_ty} {first_lit}")?;
+                    for (ty, lit) in rest {
+                        write!(f, ", {ty} {lit}")?;
                     }
                 }
                 f.write_str("]")

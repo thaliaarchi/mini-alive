@@ -37,8 +37,17 @@ fn main() {
     println!("Parsed as type:");
     match parser.parse_type() {
         Ok(ty) => {
-            println!("Debug: {ty:?}");
-            println!("Pretty: {ty}");
+            println!("  Debug: {ty:?}");
+            println!("  Pretty: {ty}");
+        }
+        Err(err) => eprintln!("Error: {err:?}"),
+    }
+    let mut parser = Parser::new(&src);
+    println!("Parsed as literal:");
+    match parser.parse_lit() {
+        Ok(lit) => {
+            println!("  Debug: {lit:?}");
+            println!("  Pretty: {lit}");
         }
         Err(err) => eprintln!("Error: {err:?}"),
     }

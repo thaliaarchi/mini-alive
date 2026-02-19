@@ -4,7 +4,7 @@ use std::{cell::Cell, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
     lex::{Lexeme, Lexer, Token, TokenSet, token_set},
-    value::Type,
+    value::{Lit, Type},
 };
 
 /// A parser for Mini-Alive source.
@@ -34,6 +34,8 @@ pub enum ErrorKind {
     ExpectedIdent(&'static str),
     /// Unknown type name.
     TypeName,
+    /// Unknown literal name.
+    LitName,
     /// Failed to parse an integer literal.
     IntLit(ParseIntError),
 }
@@ -49,6 +51,12 @@ pub enum Context {
     StructType,
     /// An array type.
     ArrayType,
+    /// A literal.
+    Lit,
+    /// A struct literal.
+    StructLit,
+    /// An array literal.
+    ArrayLit,
 }
 
 /// A drop guard which restores the original context.
@@ -85,13 +93,7 @@ impl<'s> Parser<'s> {
                 "i16" => Type::I16,
                 "ptr" => Type::Ptr,
                 "i1" => Type::Bool,
-                _ => {
-                    return Err(Error {
-                        lex: first,
-                        kind: ErrorKind::TypeName,
-                        ctx: self.ctx(),
-                    });
-                }
+                _ => return Err(Error::new(first, ErrorKind::TypeName, self.ctx())),
             },
             Token::LBrace => {
                 let _ctx = self.with_ctx(Context::StructType);
@@ -121,6 +123,55 @@ impl<'s> Parser<'s> {
         Ok(ty)
     }
 
+    /// Parses a literal value.
+    pub fn parse_lit(&mut self) -> Result<Lit, Error<'s>> {
+        let _ctx = self.with_ctx(Context::Lit);
+        let first = self.expect(token_set!(Int | Ident | LBrace | LBracket))?;
+        let ty = match first.tok {
+            Token::Int => Lit::I16(self.parse_int(first)?),
+            Token::Ident => match first.text {
+                "null" => Lit::Null,
+                _ => return Err(Error::new(first, ErrorKind::LitName, self.ctx())),
+            },
+            Token::LBrace => {
+                let _ctx = self.with_ctx(Context::StructLit);
+                let mut fields = Vec::new();
+                if self.peek().tok != Token::RBrace {
+                    loop {
+                        let ty = self.parse_type()?;
+                        let lit = self.parse_lit()?;
+                        fields.push((ty, lit));
+                        if self.peek().tok == Token::RBrace {
+                            break;
+                        }
+                        self.expect(Token::Comma)?;
+                    }
+                }
+                self.expect(Token::RBrace)?;
+                Lit::Struct(fields)
+            }
+            Token::LBracket => {
+                let _ctx = self.with_ctx(Context::ArrayLit);
+                let mut elems = Vec::new();
+                if self.peek().tok != Token::RBracket {
+                    loop {
+                        let ty = self.parse_type()?;
+                        let lit = self.parse_lit()?;
+                        elems.push((ty, lit));
+                        if self.peek().tok == Token::RBracket {
+                            break;
+                        }
+                        self.expect(Token::Comma)?;
+                    }
+                }
+                self.expect(Token::RBracket)?;
+                Lit::Array(elems)
+            }
+            _ => unreachable!(),
+        };
+        Ok(ty)
+    }
+
     fn peek(&mut self) -> &Lexeme<'s> {
         self.peek.get_or_insert_with(|| self.lexer.next())
     }
@@ -138,11 +189,11 @@ impl<'s> Parser<'s> {
         if expected.contains(lex.tok) {
             Ok(lex)
         } else {
-            Err(Error {
+            Err(Error::new(
                 lex,
-                kind: ErrorKind::ExpectedToken(expected),
-                ctx: self.ctx(),
-            })
+                ErrorKind::ExpectedToken(expected),
+                self.ctx(),
+            ))
         }
     }
 
@@ -151,21 +202,19 @@ impl<'s> Parser<'s> {
         if lex.text == ident {
             Ok(())
         } else {
-            Err(Error {
-                lex,
-                kind: ErrorKind::ExpectedIdent(ident),
-                ctx: self.ctx(),
-            })
+            Err(Error::new(lex, ErrorKind::ExpectedIdent(ident), self.ctx()))
         }
     }
 
     fn expect_int<T: FromStr<Err = ParseIntError>>(&mut self) -> Result<T, Error<'s>> {
         let lex = self.expect(Token::Int)?;
-        lex.text.parse::<T>().map_err(|err| Error {
-            lex,
-            kind: ErrorKind::IntLit(err),
-            ctx: self.ctx(),
-        })
+        self.parse_int(lex)
+    }
+
+    fn parse_int<T: FromStr<Err = ParseIntError>>(&self, lex: Lexeme<'s>) -> Result<T, Error<'s>> {
+        lex.text
+            .parse::<T>()
+            .map_err(|err| Error::new(lex, ErrorKind::IntLit(err), self.ctx()))
     }
 
     /// Gets the current parse context.
@@ -187,5 +236,11 @@ impl<'s> Parser<'s> {
 impl Drop for ContextGuard {
     fn drop(&mut self) {
         unsafe { *self.ctx = self.old_ctx };
+    }
+}
+
+impl<'s> Error<'s> {
+    fn new(lex: Lexeme<'s>, kind: ErrorKind, ctx: Context) -> Self {
+        Error { lex, kind, ctx }
     }
 }
