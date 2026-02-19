@@ -46,7 +46,7 @@ fn types_and_literals() {
     for (ty, ty_str, lit, lit_str) in tests {
         assert_eq!(ty.to_string(), ty_str, "{ty:?}.to_string()");
         assert_eq!(lit.to_string(), lit_str, "{lit:?}.to_string()");
-        assert_eq!(lit.typ(), ty);
+        assert_eq!(lit.ty(), ty);
         assert!(lit.has_type(&ty));
     }
 }

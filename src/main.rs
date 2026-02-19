@@ -1,6 +1,9 @@
 use std::{env, fs, process::exit};
 
-use mini_alive::syntax::lex::{Lexer, Token};
+use mini_alive::syntax::{
+    lex::{Lexer, Token},
+    parse::Parser,
+};
 
 fn main() {
     let mut args = env::args_os();
@@ -16,12 +19,27 @@ fn main() {
             exit(1);
         }
     };
-    let mut lex = Lexer::new(&src);
-    while let Some(tok) = lex.next() {
-        if tok == Token::Invalid {
-            eprintln!("Error: Invalid token {:?} at {}", lex.text(), lex.span());
+    let mut lexer = Lexer::new(&src);
+    println!("Tokens:");
+    loop {
+        let lex = lexer.next();
+        if lex.tok == Token::Eof {
+            break;
+        } else if lex.tok == Token::Invalid {
+            eprintln!("Error: Invalid token {:?} at {}", lex.text, lex.span);
         } else {
-            println!("{tok:?} {:?}", lex.text());
+            println!("{:?} {:?}", lex.tok, lex.text);
         }
+    }
+    println!();
+
+    let mut parser = Parser::new(&src);
+    println!("Parsed as type:");
+    match parser.parse_type() {
+        Ok(ty) => {
+            println!("Debug: {ty:?}");
+            println!("Pretty: {ty}");
+        }
+        Err(err) => eprintln!("Error: {err:?}"),
     }
 }

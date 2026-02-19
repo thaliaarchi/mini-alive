@@ -34,7 +34,7 @@ pub enum Lit {
 
 impl Lit {
     /// Gets the type of this literal value.
-    pub fn typ(&self) -> Type {
+    pub fn ty(&self) -> Type {
         match self {
             Lit::I16(_) => Type::I16,
             Lit::Null => Type::Ptr,
