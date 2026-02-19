@@ -1,3 +1,23 @@
+# Tokens
+
+token ::=
+    | ident
+    | int_lit
+    | global_name
+    | local_name
+    | label
+    | "(" | ")" | "{" | "}" | "[" | "]"
+    | "," | "="
+    | space
+    | comment
+ident ::= [a-zA-Z$._-][a-zA-Z0-9$._-]*
+space ::= [ \t\n\r\0]+
+comment ::= ";" [^\n\r]* | "/*" .*? "*/"
+
+# Syntax
+
+program ::= func*
+
 val_ty ::=
     | int_ty
     | ptr_ty
@@ -9,38 +29,36 @@ struct_ty ::= "{" val_ty* "}"
 bool_ty ::= "i1"
 
 lit ::= int_lit | ptr_lit | bool_lit
-int_lit ::= -?[1-9][0-9]* | -?0x[0-9a-fA-F]+ | -?0b[01]+
+int_lit ::= -?[0-9]+
 ptr_lit ::= "null"
 bool_lit ::= "0" | "1"
 
-val_name ::= "%" ## ident
-func_name ::= "@" ## ident
-bb_def ::= ident ## ":"
-bb_ref ::= "label" ident
-bb_name ::= "%" ## ident
-ident ::= \.?[a-zA-Z_](\.?[a-zA-Z0-9_])*
+global_name ::= "@" name
+local_name ::= "%" name
+label ::= name ":"
+name ::= ident | [0-9]+
 
-val ::= val_name | int_lit | ptr_lit
-ptr_val ::= val_name | ptr_lit
-bool_val ::= val_name | bool_lit
+val ::= local_name | int_lit | ptr_lit
+ptr_val ::= local_name | ptr_lit
+bool_val ::= local_name | bool_lit
 
-func ::= "define" val_ty func_name params "{" bb* "}"
+func ::= "define" val_ty global_name params "{" bb* "}"
 params ::= "(" (param ",")* param? ")"
-param ::= val_ty val_name
+param ::= val_ty local_name
 args ::= "(" (arg ",")* arg? ")"
 arg ::= val_ty val
-bb ::= bb_def inst* inst_term
+bb ::= label inst* inst_term
 
 inst ::=
-    | val_name "=" arith int_ty val "," val
-    | val_name "=" "extractvalue" struct_ty val "," int_lit ("," int_lit)*
-    | val_name "=" "insertvalue" struct_ty val "," val_ty val "," int_lit ("," int_lit)*
-    | val_name "=" "alloca" val_ty ("," int_ty val)?
-    | val_name "=" "load" val_ty "," ptr_ty ptr_val
+    | local_name "=" arith int_ty val "," val
+    | local_name "=" "extractvalue" struct_ty val "," int_lit ("," int_lit)*
+    | local_name "=" "insertvalue" struct_ty val "," val_ty val "," int_lit ("," int_lit)*
+    | local_name "=" "alloca" val_ty ("," int_ty val)?
+    | local_name "=" "load" val_ty "," ptr_ty ptr_val
     | "store" val_ty val "," ptr_ty ptr_val
-    | val_name "=" "icmp" cond bool_ty val "," val
-    | val_name "=" "phi" val_ty "[" val "," bb_name "]" ("," "[" val "," bb_name "]")*
-    | val_name "=" "call" val_ty func_name args
+    | local_name "=" "icmp" cond bool_ty val "," val
+    | local_name "=" "phi" val_ty "[" val "," local_name "]" ("," "[" val "," local_name "]")*
+    | local_name "=" "call" val_ty global_name args
 arith ::=
     | "add" | "sub" | "mul"
     | "udiv" | "sdiv" | "urem" | "srem"
@@ -49,8 +67,8 @@ arith ::=
 
 inst_term ::=
     | "ret" val_ty val
-    | "br" bool_ty cond "," bb_ref "," bb_ref
-    | "br" bb_ref
+    | "br" bool_ty cond "," "label" local_name "," "label" local_name
+    | "br" "label" local_name
 
 cond ::=
     | "eq" | "ne"

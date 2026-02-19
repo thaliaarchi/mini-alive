@@ -1,6 +1,6 @@
 //! Generic token scanning.
 
-use std::{cmp::Ordering, num::NonZero, str::Chars};
+use std::{cmp::Ordering, fmt, num::NonZero, str::Chars};
 
 /// A scanner for reading tokens from UTF-8 text.
 #[derive(Clone, Debug)]
@@ -12,6 +12,15 @@ pub struct Scanner<'s> {
     /// Start position of the current token.
     start: Pos,
     /// End position of the current token.
+    end: Pos,
+}
+
+/// A source position range.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Span {
+    /// Start position.
+    start: Pos,
+    /// End position.
     end: Pos,
 }
 
@@ -42,37 +51,46 @@ impl<'s> Scanner<'s> {
         }
     }
 
-    /// Returns the full source text.
+    /// Gets the full source text.
     #[inline]
     pub fn src(&self) -> &'s str {
         self.src
     }
 
-    /// Returns the text of the current token.
+    /// Gets the text of the current token.
     #[inline]
     pub fn text(&self) -> &'s str {
         &self.src[self.start.offset..self.end.offset]
     }
 
-    /// Returns the remaining text to be scanned.
+    /// Gets the remaining text to be scanned.
     #[inline]
     pub fn rest(&self) -> &'s str {
         self.chars.as_str()
     }
 
-    /// Returns the start position of the current token.
+    /// Gets the source position range of the current token.
+    #[inline]
+    pub fn span(&self) -> Span {
+        Span {
+            start: self.start,
+            end: self.end,
+        }
+    }
+
+    /// Gets the start position of the current token.
     #[inline]
     pub fn start(&self) -> Pos {
         self.start
     }
 
-    /// Returns the end position of the current token.
+    /// Gets the end position of the current token.
     #[inline]
     pub fn end(&mut self) -> Pos {
         self.end
     }
 
-    /// Returns the current offset into the source.
+    /// Gets the current offset into the source.
     #[inline]
     pub fn offset(&self) -> usize {
         self.end.offset
@@ -98,7 +116,7 @@ impl<'s> Scanner<'s> {
         self.rest().is_empty()
     }
 
-    /// Returns the next character without consuming it.
+    /// Gets the next character without consuming it.
     #[inline]
     pub fn peek(&self) -> Option<char> {
         self.chars.clone().next()
@@ -129,10 +147,12 @@ impl<'s> Scanner<'s> {
     }
 
     /// Consumes characters matching a predicate and returns the consumed text.
-    pub fn bump_while<F: FnMut(char) -> bool>(&mut self, mut predicate: F) -> &'s str {
-        let start = self.end.offset;
-        while self.bump_if(&mut predicate) {}
-        &self.src[start..self.end.offset]
+    pub fn bump_while<F: FnMut(char) -> bool>(&mut self, mut predicate: F) -> bool {
+        let mut moved = false;
+        while self.bump_if(&mut predicate) {
+            moved = true;
+        }
+        moved
     }
 
     /// Moves the end position by the width of the character.
@@ -147,18 +167,30 @@ impl<'s> Scanner<'s> {
     }
 }
 
+impl Span {
+    /// Gets the start position.
+    pub fn start(&self) -> Pos {
+        self.start
+    }
+
+    /// Gets the end position.
+    pub fn end(&self) -> Pos {
+        self.end
+    }
+}
+
 impl Pos {
-    /// Returns the byte offset, starting at 0.
+    /// Gets the byte offset, starting at 0.
     pub fn offset(&self) -> usize {
         self.offset
     }
 
-    /// Returns the line number, starting at 1.
+    /// Gets the line number, starting at 1.
     pub fn line(&self) -> usize {
         self.line.get() as usize
     }
 
-    /// Returns the column number, starting at 1.
+    /// Gets the column number, starting at 1.
     pub fn column(&self) -> usize {
         self.column.get() as usize
     }
@@ -179,9 +211,28 @@ impl PartialOrd for Pos {
                 }
             };
             if !consistent {
-                panic!("compared positions from different sources: {self:?} and {other:?}");
+                panic!("compared positions from different sources: {self} and {other}");
             }
         }
         Some(ord)
+    }
+}
+
+impl fmt::Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.end.offset == self.start.offset + 1
+            && self.start.line == self.end.line
+            && self.end.column.get() == self.start.column.get() + 1
+        {
+            write!(f, "{}", self.start)
+        } else {
+            write!(f, "{}-{}", self.start, self.end)
+        }
+    }
+}
+
+impl fmt::Display for Pos {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
     }
 }
