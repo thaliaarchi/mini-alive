@@ -6,6 +6,53 @@ use std::fmt;
 // - Implement type checking: it needs unification for 0-element arrays and
 //   boolean literals.
 
+/// An instruction: `result op args`
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Inst {
+    /// Result SSA value: `(local_name "=")?`
+    pub result: Option<LocalName>,
+    /// Instruction name: `ident`
+    pub op: String,
+    /// Arguments to the instruction: `(arg ("," arg)*)*`
+    pub args: Vec<Arg>,
+}
+
+/// An argument to an instruction.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Arg {
+    /// Integer literal: `lit`
+    Int(usize),
+    /// Type: `type`
+    Type(Type),
+    /// Value: `type val`
+    Value(Type, Val),
+    /// Label: `"label" local_name`
+    Label(LocalName),
+    /// Boolean conditional: `cond type val`
+    Cond(Cond, Type, Val),
+    /// Phi: `type "[" val "," local_name "]" ("," "[" val "," local_name "]")*`
+    Phi(Type, Vec<(Val, LocalName)>),
+    /// Function call: `type global_name "(" (arg ("," arg)*)? ")"`
+    Call(Type, GlobalName, Vec<Arg>),
+}
+
+/// A global name (`@`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GlobalName(pub String);
+
+/// A local name (`%`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LocalName(pub String);
+
+/// A value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Val {
+    /// Literal value.
+    Lit(Lit),
+    /// Local value.
+    Local(LocalName),
+}
+
 /// A type.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Type {
@@ -34,6 +81,31 @@ pub enum Lit {
     Array(Vec<(Type, Lit)>),
     /// Boolean: `"0" | "1"`
     Bool(bool),
+}
+
+/// Boolean conditional.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cond {
+    /// `eq`
+    Eq,
+    /// `ne`
+    Ne,
+    /// `ugt`
+    Ugt,
+    /// `uge`
+    Uge,
+    /// `ult`
+    Ult,
+    /// `ule`
+    Ule,
+    /// `sgt`
+    Sgt,
+    /// `sge`
+    Sge,
+    /// `slt`
+    Slt,
+    /// `sle`
+    Sle,
 }
 
 impl Lit {
@@ -88,6 +160,81 @@ impl Lit {
     }
 }
 
+impl fmt::Display for Inst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(result) = &self.result {
+            write!(f, "{result} = ")?;
+        }
+        write!(f, "{}", self.op)?;
+        let mut first = true;
+        for arg in &self.args {
+            if !first {
+                f.write_str(", ")?;
+            }
+            first = false;
+            arg.fmt(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Arg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Arg::Int(n) => write!(f, "{n}"),
+            Arg::Type(ty) => ty.fmt(f),
+            Arg::Value(ty, val) => write!(f, "{ty} {val}"),
+            Arg::Label(label) => write!(f, "label {label}"),
+            Arg::Cond(cond, ty, val) => write!(f, "{cond} {ty} {val}"),
+            Arg::Phi(ty, values) => {
+                write!(f, "{ty}")?;
+                let mut first = true;
+                for (val, label) in values {
+                    if !first {
+                        f.write_str(",")?;
+                    }
+                    first = false;
+                    write!(f, " [{val}, {label}]")?;
+                }
+                Ok(())
+            }
+            Arg::Call(ty, name, args) => {
+                write!(f, "{ty} {name}(")?;
+                let mut first = true;
+                for arg in args {
+                    if !first {
+                        f.write_str(", ")?;
+                    }
+                    first = false;
+                    arg.fmt(f)?;
+                }
+                f.write_str(")")
+            }
+        }
+    }
+}
+
+impl fmt::Display for GlobalName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@{}", self.0)
+    }
+}
+
+impl fmt::Display for LocalName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "%{}", self.0)
+    }
+}
+
+impl fmt::Display for Val {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Val::Lit(lit) => lit.fmt(f),
+            Val::Local(name) => name.fmt(f),
+        }
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -136,5 +283,22 @@ impl fmt::Display for Lit {
             }
             Lit::Bool(b) => write!(f, "{}", *b as u8),
         }
+    }
+}
+
+impl fmt::Display for Cond {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Cond::Eq => "eq",
+            Cond::Ne => "ne",
+            Cond::Ugt => "ugt",
+            Cond::Uge => "uge",
+            Cond::Ult => "ult",
+            Cond::Ule => "ule",
+            Cond::Sgt => "sgt",
+            Cond::Sge => "sge",
+            Cond::Slt => "slt",
+            Cond::Sle => "sle",
+        })
     }
 }
