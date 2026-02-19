@@ -1,0 +1,9 @@
+[package]
+name = "mini-alive"
+version = "0.1.0"
+authors = ["Thalia Archibald <thalia@archibald.dev>"]
+edition = "2024"
+description = "A minimal re-implementation of Alive2, intended as a test bed for research"
+license = "MPL-2.0"
+
+[dependencies]
