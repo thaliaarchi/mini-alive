@@ -18,19 +18,18 @@ comment ::= ";" [^\n\r]* | "/*" .*? "*/"
 
 program ::= func*
 
-val_ty ::=
-    | int_ty
-    | ptr_ty
-    | struct_ty
-    | "[" int_lit "x" val_ty "]"
+type ::= int_ty | ptr_ty | struct_ty | array_ty
 int_ty ::= "i16"
 ptr_ty ::= "ptr"
-struct_ty ::= "{" val_ty* "}"
+struct_ty ::= "{" (type ("," type)*)? "}"
+array_ty ::= "[" int_lit "x" type "]"
 bool_ty ::= "i1"
 
-lit ::= int_lit | ptr_lit | bool_lit
+lit ::= int_lit | ptr_lit | struct_lit | array_lit | bool_lit
 int_lit ::= -?[0-9]+
 ptr_lit ::= "null"
+struct_lit ::= "{" (type lit ("," type lit)*)? "}"
+array_lit ::= "[" (type lit ("," type lit)*)? "]"
 bool_lit ::= "0" | "1"
 
 global_name ::= "@" name
@@ -38,27 +37,27 @@ local_name ::= "%" name
 label ::= name ":"
 name ::= ident | [0-9]+
 
-val ::= local_name | int_lit | ptr_lit
+val ::= local_name | int_lit | ptr_lit | struct_lit | array_lit
 ptr_val ::= local_name | ptr_lit
 bool_val ::= local_name | bool_lit
 
-func ::= "define" val_ty global_name params "{" bb* "}"
-params ::= "(" (param ",")* param? ")"
-param ::= val_ty local_name
-args ::= "(" (arg ",")* arg? ")"
-arg ::= val_ty val
+func ::= "define" type global_name params "{" bb* "}"
+params ::= "(" (param ("," param)*)? ")"
+param ::= type local_name
+args ::= "(" (arg ("," arg)*)? ")"
+arg ::= type val
 bb ::= label inst* inst_term
 
 inst ::=
     | local_name "=" arith int_ty val "," val
     | local_name "=" "extractvalue" struct_ty val "," int_lit ("," int_lit)*
-    | local_name "=" "insertvalue" struct_ty val "," val_ty val "," int_lit ("," int_lit)*
-    | local_name "=" "alloca" val_ty ("," int_ty val)?
-    | local_name "=" "load" val_ty "," ptr_ty ptr_val
-    | "store" val_ty val "," ptr_ty ptr_val
+    | local_name "=" "insertvalue" struct_ty val "," type val "," int_lit ("," int_lit)*
+    | local_name "=" "alloca" type ("," int_ty val)?
+    | local_name "=" "load" type "," ptr_ty ptr_val
+    | "store" type val "," ptr_ty ptr_val
     | local_name "=" "icmp" cond bool_ty val "," val
-    | local_name "=" "phi" val_ty "[" val "," local_name "]" ("," "[" val "," local_name "]")*
-    | local_name "=" "call" val_ty global_name args
+    | local_name "=" "phi" type "[" val "," local_name "]" ("," "[" val "," local_name "]")*
+    | local_name "=" "call" type global_name args
 arith ::=
     | "add" | "sub" | "mul"
     | "udiv" | "sdiv" | "urem" | "srem"
@@ -66,7 +65,7 @@ arith ::=
     | "and" | "or" | "xor"
 
 inst_term ::=
-    | "ret" val_ty val
+    | "ret" type val
     | "br" bool_ty cond "," "label" local_name "," "label" local_name
     | "br" "label" local_name
 
