@@ -16,8 +16,8 @@ fn main() {
             exit(1);
         }
     };
-    let mut parser = Parser::new(&src);
-    println!("Parsed functions:");
+    let mut parser = Parser::new(&src, &filename);
+    println!("Parsing functions:\n");
     while !parser.eof() {
         match parser.parse_func() {
             Ok(func) => {

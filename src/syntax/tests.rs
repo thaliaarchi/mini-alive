@@ -52,8 +52,8 @@ fn types_and_literals() {
         assert_eq!(lit.to_string(), lit_str, "{lit:?}.to_string()");
         assert_eq!(lit.ty().as_ref(), Some(&ty));
         assert!(lit.has_type(&ty));
-        assert_eq!(Parser::new(ty_str).parse_type(), Ok(ty));
-        assert_eq!(Parser::new(lit_str).parse_lit(), Ok(lit));
+        assert_eq!(Parser::new(ty_str, "test").parse_type(), Ok(ty));
+        assert_eq!(Parser::new(lit_str, "test").parse_lit(), Ok(lit));
     }
 }
 
@@ -73,7 +73,7 @@ fn empty_array() {
 #[test]
 fn bools() {
     assert_eq!(Type::Bool.to_string(), "i1");
-    assert_eq!(Parser::new("i1").parse_type(), Ok(Type::Bool));
+    assert_eq!(Parser::new("i1", "test").parse_type(), Ok(Type::Bool));
     let tests = [(Lit::Bool(false), "0"), (Lit::Bool(true), "1")];
     for (lit, lit_str) in tests {
         assert_eq!(lit.to_string(), lit_str, "{lit:?}.to_string()");

@@ -1,6 +1,6 @@
 //! Parsing Mini-Alive source.
 
-use std::{cell::Cell, fmt, num::ParseIntError, str::FromStr};
+use std::{cell::Cell, ffi::OsStr, fmt, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
     func::{BBlock, Func},
@@ -17,6 +17,7 @@ pub struct Parser<'s> {
     lexer: Lexer<'s>,
     peek: Option<Lexeme<'s>>,
     ctx: Cell<Context>,
+    filename: String,
 }
 
 /// A parse error.
@@ -28,6 +29,10 @@ pub struct Error<'s> {
     pub kind: ErrorKind,
     /// The context in the grammar.
     pub ctx: Context,
+    /// The filename of the source.
+    pub filename: String,
+    /// The line in the source text.
+    pub line: &'s str,
 }
 
 /// A kind of parse error.
@@ -120,16 +125,18 @@ struct ContextGuard {
 
 impl<'s> Parser<'s> {
     /// Constructs a parser for Mini-Alive source.
-    pub fn new(src: &'s str) -> Self {
-        Parser::from_lexer(Lexer::new(src))
+    pub fn new<T: AsRef<OsStr>>(src: &'s str, filename: T) -> Self {
+        Parser::from_lexer(Lexer::new(src), filename.as_ref())
     }
 
     /// Constructs a parser from a lexer.
-    pub fn from_lexer(lexer: Lexer<'s>) -> Self {
+    pub fn from_lexer(lexer: Lexer<'s>, filename: &OsStr) -> Self {
+        let filename = filename.to_string_lossy().into_owned();
         Parser {
             lexer,
             peek: None,
             ctx: Cell::new(Context::TopLevel),
+            filename,
         }
     }
 
@@ -276,7 +283,7 @@ impl<'s> Parser<'s> {
                 let result = self.require_result(result, op)?;
                 let cond = self.expect(Token::Ident)?;
                 let Some(cond) = Cond::from_str(cond.text) else {
-                    return Err(Error::new(cond, ErrorKind::Cond, self.ctx()));
+                    return Err(self.err(cond, ErrorKind::Cond, self.ctx()));
                 };
                 let ty = self.parse_type()?;
                 let lhs = self.parse_val()?;
@@ -365,7 +372,7 @@ impl<'s> Parser<'s> {
                     }))
                 }
             }
-            _ => Err(Error::new(op, ErrorKind::UnsupportedInst, self.ctx())),
+            _ => Err(self.err(op, ErrorKind::UnsupportedInst, self.ctx())),
         }
     }
 
@@ -395,7 +402,7 @@ impl<'s> Parser<'s> {
                 "i16" => Type::I16,
                 "ptr" => Type::Ptr,
                 "i1" => Type::Bool,
-                _ => return Err(Error::new(first, ErrorKind::TypeName, self.ctx())),
+                _ => return Err(self.err(first, ErrorKind::TypeName, self.ctx())),
             },
             Token::LBrace => {
                 let _ctx = self.with_ctx(Context::StructType);
@@ -433,7 +440,7 @@ impl<'s> Parser<'s> {
             Token::Int => Lit::I16(self.parse_int(first)?),
             Token::Ident => match first.text {
                 "null" => Lit::Null,
-                _ => return Err(Error::new(first, ErrorKind::LitName, self.ctx())),
+                _ => return Err(self.err(first, ErrorKind::LitName, self.ctx())),
             },
             Token::LBrace => {
                 let _ctx = self.with_ctx(Context::StructLit);
@@ -514,11 +521,7 @@ impl<'s> Parser<'s> {
         if expected.contains(lex.tok) {
             Ok(lex)
         } else {
-            Err(Error::new(
-                lex,
-                ErrorKind::ExpectedToken(expected),
-                self.ctx(),
-            ))
+            Err(self.err(lex, ErrorKind::ExpectedToken(expected), self.ctx()))
         }
     }
 
@@ -527,7 +530,7 @@ impl<'s> Parser<'s> {
         if lex.tok == Token::Ident && lex.text == ident {
             Ok(())
         } else {
-            Err(Error::new(lex, ErrorKind::ExpectedIdent(ident), self.ctx()))
+            Err(self.err(lex, ErrorKind::ExpectedIdent(ident), self.ctx()))
         }
     }
 
@@ -549,7 +552,7 @@ impl<'s> Parser<'s> {
     fn parse_int<T: FromStr<Err = ParseIntError>>(&self, lex: Lexeme<'s>) -> Result<T, Error<'s>> {
         lex.text
             .parse::<T>()
-            .map_err(|err| Error::new(lex, ErrorKind::IntLit(err), self.ctx()))
+            .map_err(|err| self.err(lex, ErrorKind::IntLit(err), self.ctx()))
     }
 
     fn require_result(
@@ -562,14 +565,36 @@ impl<'s> Parser<'s> {
                 debug_assert_eq!(result.tok, Token::LocalName);
                 Ok(LocalName(result.text[1..].to_owned()))
             }
-            None => Err(Error::new(op, ErrorKind::MissingResult, self.ctx())),
+            None => Err(self.err(op, ErrorKind::MissingResult, self.ctx())),
         }
     }
 
     fn forbid_result(&self, result: Option<Lexeme<'s>>) -> Result<(), Error<'s>> {
         match result {
-            Some(result) => Err(Error::new(result, ErrorKind::UnexpectedResult, self.ctx())),
+            Some(result) => Err(self.err(result, ErrorKind::UnexpectedResult, self.ctx())),
             None => Ok(()),
+        }
+    }
+
+    fn err(&self, lex: Lexeme<'s>, kind: ErrorKind, ctx: Context) -> Error<'s> {
+        let src = self.lexer.src().as_bytes();
+        let mut line_start = lex.span.start().offset();
+        while line_start != 0 && src[line_start - 1] != b'\n' {
+            line_start -= 1;
+        }
+        let mut line_end = lex.span.end().offset();
+        while line_end < src.len() && src[line_end] != b'\n' {
+            line_end += 1;
+        }
+        if line_end != 0 && src[line_end - 1] == b'\r' {
+            line_end -= 1;
+        }
+        Error {
+            lex,
+            kind,
+            ctx,
+            filename: self.filename.clone(),
+            line: &self.lexer.src()[line_start..line_end],
         }
     }
 
@@ -595,20 +620,32 @@ impl Drop for ContextGuard {
     }
 }
 
-impl<'s> Error<'s> {
-    fn new(lex: Lexeme<'s>, kind: ErrorKind, ctx: Context) -> Self {
-        Error { lex, kind, ctx }
-    }
-}
-
 impl fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Error: {}", self.kind)?;
-        write!(f, "  got {}", self.lex.tok)?;
+        write!(f, "Error: {}; found {}", self.kind, self.lex.tok)?;
         if self.lex.tok.can_vary() {
             write!(f, " `{}`", self.lex.text)?;
         }
-        writeln!(f, " while parsing {} at {}", self.ctx, self.lex.span)
+        writeln!(f)?;
+        let span = &self.lex.span;
+        debug_assert_eq!(span.start().line(), span.end().line());
+        let line_number = span.start().line();
+        let width = line_number.ilog10() as usize + 1;
+        writeln!(f, "{:>n$}--> {}:{span}", "", self.filename, n = width)?;
+        writeln!(f, "{:>n$} |", "", n = width)?;
+        writeln!(f, "{line_number} | {}", self.line)?;
+        write!(
+            f,
+            "{:>n$} | {:>start$}{}",
+            "",
+            "",
+            "^".repeat((span.end().column() - span.start().column()).min(1)),
+            n = width,
+            start = span.start().column() - 1,
+        )?;
+        writeln!(f)?;
+        writeln!(f, "{:>n$} |", "", n = width)?;
+        writeln!(f, "{:>n$} = context: parsing {}", "", self.ctx, n = width)
     }
 }
 

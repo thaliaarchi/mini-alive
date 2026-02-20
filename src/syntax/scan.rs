@@ -52,7 +52,6 @@ impl<'s> Scanner<'s> {
     }
 
     /// Gets the full source text.
-    #[expect(dead_code)]
     #[inline]
     pub fn src(&self) -> &'s str {
         self.src

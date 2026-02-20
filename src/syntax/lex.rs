@@ -162,6 +162,11 @@ impl<'s> Lexer<'s> {
             text: self.scan.text(),
         }
     }
+
+    /// Gets the full source text.
+    pub fn src(&self) -> &'s str {
+        self.scan.src()
+    }
 }
 
 impl Token {
