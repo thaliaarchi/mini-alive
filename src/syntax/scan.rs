@@ -52,6 +52,7 @@ impl<'s> Scanner<'s> {
     }
 
     /// Gets the full source text.
+    #[expect(dead_code)]
     #[inline]
     pub fn src(&self) -> &'s str {
         self.src
@@ -63,12 +64,6 @@ impl<'s> Scanner<'s> {
         &self.src[self.start.offset..self.end.offset]
     }
 
-    /// Gets the remaining text to be scanned.
-    #[inline]
-    pub fn rest(&self) -> &'s str {
-        self.chars.as_str()
-    }
-
     /// Gets the source position range of the current token.
     #[inline]
     pub fn span(&self) -> Span {
@@ -78,42 +73,10 @@ impl<'s> Scanner<'s> {
         }
     }
 
-    /// Gets the start position of the current token.
-    #[inline]
-    pub fn start(&self) -> Pos {
-        self.start
-    }
-
-    /// Gets the end position of the current token.
-    #[inline]
-    pub fn end(&mut self) -> Pos {
-        self.end
-    }
-
-    /// Gets the current offset into the source.
-    #[inline]
-    pub fn offset(&self) -> usize {
-        self.end.offset
-    }
-
     /// Starts scanning a new token.
     #[inline]
     pub fn start_next(&mut self) {
         self.start = self.end;
-    }
-
-    /// Backtracks to an earlier position in the current token.
-    #[inline]
-    pub fn backtrack(&mut self, end: Pos) {
-        debug_assert!(self.start <= end, "backtracked before start");
-        debug_assert!(end <= self.end, "backtracked after end");
-        self.end = end;
-    }
-
-    /// Returns whether the scanner is at the end of the source.
-    #[inline]
-    pub fn eof(&self) -> bool {
-        self.rest().is_empty()
     }
 
     /// Gets the next character without consuming it.

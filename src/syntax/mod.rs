@@ -4,7 +4,6 @@ pub mod func;
 pub mod inst;
 pub mod lex;
 pub mod parse;
-#[expect(dead_code)]
 mod scan;
 #[cfg(test)]
 mod tests;
