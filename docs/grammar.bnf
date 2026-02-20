@@ -40,11 +40,12 @@ name ::= ident | [0-9]+
 val ::= local_name | int_lit | ptr_lit | struct_lit | array_lit
 bool_val ::= local_name | bool_lit
 
-func ::= "define" type global_name params "{" bb* "}"
+func ::= "define" type global_name params "{" (entry_bb bb*)? "}"
 params ::= "(" (param ("," param)*)? ")"
 param ::= type local_name
 args ::= "(" (arg ("," arg)*)? ")"
 arg ::= type val
+entry_bb ::= label? inst* inst_term
 bb ::= label inst* inst_term
 
 inst ::=
@@ -65,8 +66,8 @@ arith ::=
 
 inst_term ::=
     | "ret" type val
-    | "br" bool_ty bool_val "," "label" local_name "," "label" local_name
     | "br" "label" local_name
+    | "br" bool_ty bool_val "," "label" local_name "," "label" local_name
 
 cond ::=
     | "eq" | "ne"

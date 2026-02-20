@@ -3,8 +3,12 @@
 use std::{cell::Cell, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
+    inst::{
+        Alloca, Arith, ArithOp, Br1, Br2, Call, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
+        Ret, Store,
+    },
     lex::{Lexeme, Lexer, Token, TokenSet, token_set},
-    value::{Lit, Type},
+    value::{Cond, GlobalName, Lit, LocalName, Type, TypedVal, Val},
 };
 
 /// A parser for Mini-Alive source.
@@ -38,6 +42,14 @@ pub enum ErrorKind {
     LitName,
     /// Failed to parse an integer literal.
     IntLit(ParseIntError),
+    /// Missing a required result value.
+    MissingResult,
+    /// Unexpected result value on void instruction.
+    UnexpectedResult,
+    /// Unknown instruction.
+    UnsupportedInst,
+    /// Invalid Boolean conditional.
+    Cond,
 }
 
 /// Context in the grammar for a parse error.
@@ -45,6 +57,38 @@ pub enum ErrorKind {
 pub enum Context {
     /// Top-level.
     TopLevel,
+    /// An instruction.
+    Inst,
+    /// The result of an instruction.
+    InstResult,
+    /// The opcode of an instruction.
+    InstOp,
+    /// An arithmetic instruction.
+    ArithInst,
+    /// An `extractvalue` instruction.
+    ExtractValueInst,
+    /// An `insertvalue` instruction.
+    InsertValueInst,
+    /// An `alloca` instruction.
+    AllocaInst,
+    /// A `load` instruction.
+    LoadInst,
+    /// A `store` instruction.
+    StoreInst,
+    /// An `icmp` instruction.
+    ICmpInst,
+    /// A `phi` instruction.
+    PhiInst,
+    /// A `call` instruction.
+    CallInst,
+    /// A `ret` instruction.
+    RetInst,
+    /// A `br` instruction.
+    BrInst,
+    /// A Boolean conditional.
+    Cond,
+    /// A value.
+    Val,
     /// A type.
     Type,
     /// A struct type.
@@ -84,8 +128,209 @@ impl<'s> Parser<'s> {
         }
     }
 
+    /// Returns whether the parser is at EOF.
+    pub fn eof(&mut self) -> bool {
+        self.peek().tok == Token::Eof
+    }
+
+    /// Parses an instruction.
+    pub fn parse_inst(&mut self) -> Result<Inst, Error<'s>> {
+        let _ctx = self.with_ctx(Context::Inst);
+        let result = self.next_if(Token::LocalName);
+        if result.is_some() {
+            let _ctx = self.with_ctx(Context::InstResult);
+            self.expect(Token::Eq)?;
+        }
+        let op = {
+            let _ctx = self.with_ctx(Context::InstOp);
+            self.expect(Token::Ident)?
+        };
+        if let Some(arith) = ArithOp::from_str(op.text) {
+            let result = self.require_result(result, op)?;
+            let ty = self.parse_type()?;
+            let lhs = self.parse_val()?;
+            self.expect(Token::Comma)?;
+            let rhs = self.parse_val()?;
+            return Ok(Inst::Arith(Arith {
+                result,
+                op: arith,
+                ty,
+                lhs,
+                rhs,
+            }));
+        }
+        match op.text {
+            "extractvalue" => {
+                let _ctx = self.with_ctx(Context::ExtractValueInst);
+                let result = self.require_result(result, op)?;
+                let agg = self.parse_typed_val()?;
+                self.expect(Token::Comma)?;
+                let indices = self.parse_indices()?;
+                return Ok(Inst::ExtractValue(ExtractValue {
+                    result,
+                    agg,
+                    indices,
+                }));
+            }
+            "insertvalue" => {
+                let _ctx = self.with_ctx(Context::InsertValueInst);
+                let result = self.require_result(result, op)?;
+                let agg = self.parse_typed_val()?;
+                self.expect(Token::Comma)?;
+                let val = self.parse_typed_val()?;
+                self.expect(Token::Comma)?;
+                let indices = self.parse_indices()?;
+                Ok(Inst::InsertValue(InsertValue {
+                    result,
+                    agg,
+                    val,
+                    indices,
+                }))
+            }
+            "alloca" => {
+                let _ctx = self.with_ctx(Context::AllocaInst);
+                let result = self.require_result(result, op)?;
+                let ty = self.parse_type()?;
+                let count = if self.next_if(Token::Comma).is_some() {
+                    Some(self.expect_int()?)
+                } else {
+                    None
+                };
+                Ok(Inst::Alloca(Alloca { result, ty, count }))
+            }
+            "load" => {
+                let _ctx = self.with_ctx(Context::LoadInst);
+                let result = self.require_result(result, op)?;
+                let ty = self.parse_type()?;
+                self.expect(Token::Comma)?;
+                let ptr = self.parse_typed_val()?;
+                Ok(Inst::Load(Load { result, ty, ptr }))
+            }
+            "store" => {
+                let _ctx = self.with_ctx(Context::StoreInst);
+                self.forbid_result(result)?;
+                let val = self.parse_typed_val()?;
+                self.expect(Token::Comma)?;
+                let ptr = self.parse_typed_val()?;
+                Ok(Inst::Store(Store { val, ptr }))
+            }
+            "icmp" => {
+                let _ctx = self.with_ctx(Context::ICmpInst);
+                let result = self.require_result(result, op)?;
+                let cond = self.expect(Token::Ident)?;
+                let Some(cond) = Cond::from_str(cond.text) else {
+                    return Err(Error::new(cond, ErrorKind::Cond, self.ctx()));
+                };
+                let ty = self.parse_type()?;
+                let lhs = self.parse_val()?;
+                self.expect(Token::Comma)?;
+                let rhs = self.parse_val()?;
+                Ok(Inst::ICmp(ICmp {
+                    result,
+                    cond,
+                    ty,
+                    lhs,
+                    rhs,
+                }))
+            }
+            "phi" => {
+                let _ctx = self.with_ctx(Context::PhiInst);
+                let result = self.require_result(result, op)?;
+                let ty = self.parse_type()?;
+                let mut sources = Vec::new();
+                loop {
+                    self.expect(Token::LBracket)?;
+                    let val = self.parse_val()?;
+                    self.expect(Token::Comma)?;
+                    let label = self.expect_local_name()?;
+                    self.expect(Token::RBracket)?;
+                    sources.push((val, label));
+                    if self.next_if(Token::Comma).is_none() {
+                        break;
+                    }
+                }
+                Ok(Inst::Phi(Phi {
+                    result,
+                    ty,
+                    sources,
+                }))
+            }
+            "call" => {
+                let _ctx = self.with_ctx(Context::CallInst);
+                let result = self.require_result(result, op)?;
+                let ret_ty = self.parse_type()?;
+                let func = self.expect_global_name()?;
+                self.expect(Token::LParen)?;
+                let mut args = Vec::new();
+                if self.peek().tok != Token::RParen {
+                    loop {
+                        args.push(self.parse_typed_val()?);
+                        if self.peek().tok == Token::RParen {
+                            break;
+                        }
+                        self.expect(Token::Comma)?;
+                    }
+                }
+                self.expect(Token::RParen)?;
+                Ok(Inst::Call(Call {
+                    result,
+                    ret_ty,
+                    func,
+                    args,
+                }))
+            }
+            "ret" => {
+                let _ctx = self.with_ctx(Context::RetInst);
+                self.forbid_result(result)?;
+                let val = self.parse_typed_val()?;
+                Ok(Inst::Ret(Ret { val }))
+            }
+            "br" => {
+                let _ctx = self.with_ctx(Context::BrInst);
+                self.forbid_result(result)?;
+                let peek = self.peek();
+                if peek.tok == Token::Ident && peek.text == "label" {
+                    self.bump();
+                    let label = self.expect_local_name()?;
+                    Ok(Inst::Br1(Br1 { label }))
+                } else {
+                    let cond = self.parse_typed_val()?;
+                    self.expect(Token::Comma)?;
+                    self.expect_ident("label")?;
+                    let label_true = self.expect_local_name()?;
+                    self.expect(Token::Comma)?;
+                    self.expect_ident("label")?;
+                    let label_false = self.expect_local_name()?;
+                    Ok(Inst::Br2(Br2 {
+                        cond,
+                        label_true,
+                        label_false,
+                    }))
+                }
+            }
+            _ => Err(Error::new(op, ErrorKind::UnsupportedInst, self.ctx())),
+        }
+    }
+
+    /// Parses a typed value.
+    fn parse_typed_val(&mut self) -> Result<TypedVal, Error<'s>> {
+        let ty = self.parse_type()?;
+        let val = self.parse_val()?;
+        Ok(TypedVal { ty, val })
+    }
+
+    /// Parses a value.
+    fn parse_val(&mut self) -> Result<Val, Error<'s>> {
+        let _ctx = self.with_ctx(Context::Val);
+        if self.peek().tok == Token::LocalName {
+            Ok(Val::Local(self.expect_local_name()?))
+        } else {
+            Ok(Val::Lit(self.parse_lit()?))
+        }
+    }
+
     /// Parses a type.
-    pub fn parse_type(&mut self) -> Result<Type, Error<'s>> {
+    fn parse_type(&mut self) -> Result<Type, Error<'s>> {
         let _ctx = self.with_ctx(Context::Type);
         let first = self.expect(token_set!(Ident | LBrace | LBracket))?;
         let ty = match first.tok {
@@ -124,7 +369,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a literal value.
-    pub fn parse_lit(&mut self) -> Result<Lit, Error<'s>> {
+    fn parse_lit(&mut self) -> Result<Lit, Error<'s>> {
         let _ctx = self.with_ctx(Context::Lit);
         let first = self.expect(token_set!(Int | Ident | LBrace | LBracket))?;
         let ty = match first.tok {
@@ -172,19 +417,42 @@ impl<'s> Parser<'s> {
         Ok(ty)
     }
 
-    fn peek(&mut self) -> &Lexeme<'s> {
-        self.peek.get_or_insert_with(|| self.lexer.next())
+    /// Parses a sequence of integer indices: `int_lit ("," int_lit)*`
+    fn parse_indices(&mut self) -> Result<Vec<usize>, Error<'s>> {
+        let mut indices = vec![];
+        loop {
+            indices.push(self.expect_int()?);
+            if self.peek().tok != Token::Comma {
+                return Ok(indices);
+            }
+            self.bump();
+        }
     }
 
     fn next(&mut self) -> Lexeme<'s> {
         self.peek.take().unwrap_or_else(|| self.lexer.next())
     }
 
-    fn expect(&mut self, expected: impl Into<TokenSet>) -> Result<Lexeme<'s>, Error<'s>> {
-        self.expect_(expected.into())
+    fn peek(&mut self) -> &Lexeme<'s> {
+        self.peek.get_or_insert_with(|| self.lexer.next())
     }
 
-    fn expect_(&mut self, expected: TokenSet) -> Result<Lexeme<'s>, Error<'s>> {
+    fn bump(&mut self) -> Lexeme<'s> {
+        self.peek.take().expect("no peek before bump")
+    }
+
+    fn next_if(&mut self, expected: impl Into<TokenSet>) -> Option<Lexeme<'s>> {
+        let expected = expected.into();
+        let lex = self.peek();
+        if expected.contains(lex.tok) {
+            Some(self.bump())
+        } else {
+            None
+        }
+    }
+
+    fn expect(&mut self, expected: impl Into<TokenSet>) -> Result<Lexeme<'s>, Error<'s>> {
+        let expected = expected.into();
         let lex = self.next();
         if expected.contains(lex.tok) {
             Ok(lex)
@@ -206,6 +474,16 @@ impl<'s> Parser<'s> {
         }
     }
 
+    fn expect_global_name(&mut self) -> Result<GlobalName, Error<'s>> {
+        let lex = self.expect(Token::GlobalName)?;
+        Ok(GlobalName(lex.text[1..].to_owned()))
+    }
+
+    fn expect_local_name(&mut self) -> Result<LocalName, Error<'s>> {
+        let lex = self.expect(Token::LocalName)?;
+        Ok(LocalName(lex.text[1..].to_owned()))
+    }
+
     fn expect_int<T: FromStr<Err = ParseIntError>>(&mut self) -> Result<T, Error<'s>> {
         let lex = self.expect(Token::Int)?;
         self.parse_int(lex)
@@ -215,6 +493,27 @@ impl<'s> Parser<'s> {
         lex.text
             .parse::<T>()
             .map_err(|err| Error::new(lex, ErrorKind::IntLit(err), self.ctx()))
+    }
+
+    fn require_result(
+        &self,
+        result: Option<Lexeme<'s>>,
+        op: Lexeme<'s>,
+    ) -> Result<LocalName, Error<'s>> {
+        match result {
+            Some(result) => {
+                debug_assert_eq!(result.tok, Token::LocalName);
+                Ok(LocalName(result.text[1..].to_owned()))
+            }
+            None => Err(Error::new(op, ErrorKind::MissingResult, self.ctx())),
+        }
+    }
+
+    fn forbid_result(&self, result: Option<Lexeme<'s>>) -> Result<(), Error<'s>> {
+        match result {
+            Some(result) => Err(Error::new(result, ErrorKind::UnexpectedResult, self.ctx())),
+            None => Ok(()),
+        }
     }
 
     /// Gets the current parse context.

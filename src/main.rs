@@ -34,21 +34,14 @@ fn main() {
     println!();
 
     let mut parser = Parser::new(&src);
-    println!("Parsed as type:");
-    match parser.parse_type() {
-        Ok(ty) => {
-            println!("  Debug: {ty:?}");
-            println!("  Pretty: {ty}");
+    println!("Parsed instructions:");
+    while !parser.eof() {
+        match parser.parse_inst() {
+            Ok(inst) => {
+                println!("- Pretty: {inst}");
+                println!("  Debug: {inst:?}");
+            }
+            Err(err) => eprintln!("- Error: {err:?}"),
         }
-        Err(err) => eprintln!("Error: {err:?}"),
-    }
-    let mut parser = Parser::new(&src);
-    println!("Parsed as literal:");
-    match parser.parse_lit() {
-        Ok(lit) => {
-            println!("  Debug: {lit:?}");
-            println!("  Pretty: {lit}");
-        }
-        Err(err) => eprintln!("Error: {err:?}"),
     }
 }

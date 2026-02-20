@@ -1,5 +1,6 @@
 //! Mini-Alive syntax.
 
+pub mod inst;
 pub mod lex;
 pub mod parse;
 #[expect(dead_code)]
