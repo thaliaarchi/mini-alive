@@ -1,4 +1,7 @@
-use crate::syntax::value::{Lit, Type};
+use crate::syntax::{
+    parse::Parser,
+    value::{Lit, Type},
+};
 
 #[test]
 fn types_and_literals() {
@@ -16,7 +19,6 @@ fn types_and_literals() {
             ]),
             "[i16 1, i16 2, i16 3]",
         ),
-        (Type::Bool, "i1", Lit::Bool(true), "1"),
         (
             Type::Struct(vec![
                 Type::Ptr,
@@ -50,6 +52,8 @@ fn types_and_literals() {
         assert_eq!(lit.to_string(), lit_str, "{lit:?}.to_string()");
         assert_eq!(lit.ty().as_ref(), Some(&ty));
         assert!(lit.has_type(&ty));
+        assert_eq!(Parser::new(ty_str).parse_type(), Ok(ty));
+        assert_eq!(Parser::new(lit_str).parse_lit(), Ok(lit));
     }
 }
 
@@ -64,4 +68,17 @@ fn empty_array() {
     assert_eq!(lit.ty(), None);
     assert!(lit.has_type(&ty1));
     assert!(lit.has_type(&ty2));
+}
+
+#[test]
+fn bools() {
+    assert_eq!(Type::Bool.to_string(), "i1");
+    assert_eq!(Parser::new("i1").parse_type(), Ok(Type::Bool));
+    let tests = [(Lit::Bool(false), "0"), (Lit::Bool(true), "1")];
+    for (lit, lit_str) in tests {
+        assert_eq!(lit.to_string(), lit_str, "{lit:?}.to_string()");
+        assert_eq!(lit.ty(), Some(Type::Bool));
+        assert!(lit.has_type(&Type::Bool));
+        assert!(lit.valid());
+    }
 }

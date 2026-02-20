@@ -3,6 +3,7 @@
 use std::{cell::Cell, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
+    func::{BBlock, Func},
     inst::{
         Alloca, Arith, ArithOp, Br1, Br2, Call, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
         Ret, Store,
@@ -57,6 +58,10 @@ pub enum ErrorKind {
 pub enum Context {
     /// Top-level.
     TopLevel,
+    /// A function.
+    Func,
+    /// A basic block.
+    BBlock,
     /// An instruction.
     Inst,
     /// The result of an instruction.
@@ -133,8 +138,60 @@ impl<'s> Parser<'s> {
         self.peek().tok == Token::Eof
     }
 
+    /// Parses a function.
+    pub fn parse_func(&mut self) -> Result<Func, Error<'s>> {
+        let _ctx = self.with_ctx(Context::Func);
+        self.expect_ident("define")?;
+        let ret_ty = self.parse_type()?;
+        let name = self.expect_global_name()?;
+
+        let mut params = Vec::new();
+        self.expect(Token::LParen)?;
+        if self.peek().tok != Token::RParen {
+            loop {
+                let ty = self.parse_type()?;
+                let param_name = self.expect_local_name()?;
+                params.push((ty, param_name));
+                if self.peek().tok == Token::RParen {
+                    break;
+                }
+                self.expect(Token::Comma)?;
+            }
+        }
+        self.expect(Token::RParen)?;
+
+        let mut bbs = Vec::new();
+        self.expect(Token::LBrace)?;
+        loop {
+            if self.next_if(Token::RBrace).is_some() {
+                break;
+            }
+            bbs.push(self.parse_bb()?);
+        }
+
+        Ok(Func {
+            ret_ty,
+            name,
+            params,
+            bbs,
+        })
+    }
+
+    /// Parses a basic block.
+    pub(super) fn parse_bb(&mut self) -> Result<BBlock, Error<'s>> {
+        let _ctx = self.with_ctx(Context::BBlock);
+        let label = self
+            .next_if(Token::Label)
+            .map(|label| label.text[..label.text.len() - 1].to_owned());
+        let mut insts = Vec::new();
+        while !token_set!(Label | RBrace).contains(self.peek().tok) {
+            insts.push(self.parse_inst()?);
+        }
+        Ok(BBlock { label, insts })
+    }
+
     /// Parses an instruction.
-    pub fn parse_inst(&mut self) -> Result<Inst, Error<'s>> {
+    pub(super) fn parse_inst(&mut self) -> Result<Inst, Error<'s>> {
         let _ctx = self.with_ctx(Context::Inst);
         let result = self.next_if(Token::LocalName);
         if result.is_some() {
@@ -313,14 +370,14 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a typed value.
-    fn parse_typed_val(&mut self) -> Result<TypedVal, Error<'s>> {
+    pub(super) fn parse_typed_val(&mut self) -> Result<TypedVal, Error<'s>> {
         let ty = self.parse_type()?;
         let val = self.parse_val()?;
         Ok(TypedVal { ty, val })
     }
 
     /// Parses a value.
-    fn parse_val(&mut self) -> Result<Val, Error<'s>> {
+    pub(super) fn parse_val(&mut self) -> Result<Val, Error<'s>> {
         let _ctx = self.with_ctx(Context::Val);
         if self.peek().tok == Token::LocalName {
             Ok(Val::Local(self.expect_local_name()?))
@@ -330,7 +387,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a type.
-    fn parse_type(&mut self) -> Result<Type, Error<'s>> {
+    pub(super) fn parse_type(&mut self) -> Result<Type, Error<'s>> {
         let _ctx = self.with_ctx(Context::Type);
         let first = self.expect(token_set!(Ident | LBrace | LBracket))?;
         let ty = match first.tok {
@@ -369,7 +426,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a literal value.
-    fn parse_lit(&mut self) -> Result<Lit, Error<'s>> {
+    pub(super) fn parse_lit(&mut self) -> Result<Lit, Error<'s>> {
         let _ctx = self.with_ctx(Context::Lit);
         let first = self.expect(token_set!(Int | Ident | LBrace | LBracket))?;
         let ty = match first.tok {
