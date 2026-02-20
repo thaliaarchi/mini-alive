@@ -164,6 +164,35 @@ impl<'s> Lexer<'s> {
     }
 }
 
+impl Token {
+    /// Returns whether the token can have varying text.
+    pub const fn can_vary(self) -> bool {
+        token_set!(Ident | Int | GlobalName | LocalName | Label | Invalid).contains(self)
+    }
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Token::Ident => "identifier",
+            Token::Int => "integer literal",
+            Token::GlobalName => "global name (@)",
+            Token::LocalName => "local name (%)",
+            Token::Label => "label",
+            Token::LParen => "`(`",
+            Token::RParen => "`)`",
+            Token::LBrace => "`{`",
+            Token::RBrace => "`}`",
+            Token::LBracket => "`[`",
+            Token::RBracket => "`]`",
+            Token::Comma => "`,`",
+            Token::Eq => "`=`",
+            Token::Eof => "EOF",
+            Token::Invalid => "invalid token",
+        })
+    }
+}
+
 macro_rules! token_set(($($tok:ident)|*) => {
     const {
         crate::syntax::lex::TokenSet::empty()
@@ -197,11 +226,34 @@ impl TokenSet {
     pub const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
+
+    /// Returns the number of tokens in the set.
+    pub const fn len(self) -> usize {
+        self.0.count_ones() as usize
+    }
+
+    /// Returns whether the set is empty.
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
 }
 
 impl From<Token> for TokenSet {
     fn from(tok: Token) -> Self {
         TokenSet::one(tok)
+    }
+}
+
+impl Iterator for TokenSet {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0 == 0 {
+            return None;
+        }
+        let tok = self.0.trailing_zeros();
+        self.0 &= self.0 - 1;
+        Some(unsafe { mem::transmute(tok as u8) })
     }
 }
 

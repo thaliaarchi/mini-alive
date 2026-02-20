@@ -25,7 +25,7 @@ fn main() {
                 println!("{func}");
             }
             Err(err) => {
-                eprintln!("Error: {err:?}");
+                eprint!("{err}");
                 break;
             }
         }

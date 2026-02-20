@@ -1,6 +1,6 @@
 //! Parsing Mini-Alive source.
 
-use std::{cell::Cell, num::ParseIntError, str::FromStr};
+use std::{cell::Cell, fmt, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
     func::{BBlock, Func},
@@ -43,7 +43,7 @@ pub enum ErrorKind {
     LitName,
     /// Failed to parse an integer literal.
     IntLit(ParseIntError),
-    /// Missing a required result value.
+    /// Instruction missing required result value.
     MissingResult,
     /// Unexpected result value on void instruction.
     UnexpectedResult,
@@ -56,7 +56,7 @@ pub enum ErrorKind {
 /// Context in the grammar for a parse error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Context {
-    /// Top-level.
+    /// The top-level.
     TopLevel,
     /// A function.
     Func,
@@ -523,8 +523,8 @@ impl<'s> Parser<'s> {
     }
 
     fn expect_ident(&mut self, ident: &'static str) -> Result<(), Error<'s>> {
-        let lex = self.expect(Token::Ident)?;
-        if lex.text == ident {
+        let lex = self.next();
+        if lex.tok == Token::Ident && lex.text == ident {
             Ok(())
         } else {
             Err(Error::new(lex, ErrorKind::ExpectedIdent(ident), self.ctx()))
@@ -598,5 +598,84 @@ impl Drop for ContextGuard {
 impl<'s> Error<'s> {
     fn new(lex: Lexeme<'s>, kind: ErrorKind, ctx: Context) -> Self {
         Error { lex, kind, ctx }
+    }
+}
+
+impl fmt::Display for Error<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Error: {}", self.kind)?;
+        write!(f, "  got {}", self.lex.tok)?;
+        if self.lex.tok.can_vary() {
+            write!(f, " `{}`", self.lex.text)?;
+        }
+        writeln!(f, " while parsing {} at {}", self.ctx, self.lex.span)
+    }
+}
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            ErrorKind::ExpectedToken(mut tokens) => match tokens.len() {
+                0 => write!(f, "unexpected token"),
+                1 => write!(f, "expected {}", tokens.next().unwrap()),
+                2 => write!(
+                    f,
+                    "expected {} or {}",
+                    tokens.next().unwrap(),
+                    tokens.next().unwrap(),
+                ),
+                _ => {
+                    write!(f, "expected")?;
+                    while let Some(tok) = tokens.next() {
+                        if tokens.is_empty() {
+                            write!(f, " or {tok}")?;
+                        } else {
+                            write!(f, " {tok},")?;
+                        }
+                    }
+                    Ok(())
+                }
+            },
+            ErrorKind::ExpectedIdent(ident) => write!(f, "expected `{ident}`"),
+            ErrorKind::TypeName => write!(f, "unknown type name"),
+            ErrorKind::LitName => write!(f, "unknown literal name"),
+            ErrorKind::IntLit(ref err) => write!(f, "failed to parse integer literal: {err}"),
+            ErrorKind::MissingResult => write!(f, "instruction missing required result value"),
+            ErrorKind::UnexpectedResult => write!(f, "unexpected result value on void instruction"),
+            ErrorKind::UnsupportedInst => write!(f, "unsupported instruction"),
+            ErrorKind::Cond => write!(f, "invalid Boolean conditional"),
+        }
+    }
+}
+
+impl fmt::Display for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Context::TopLevel => "the top-level",
+            Context::Func => "a function",
+            Context::BBlock => "a basic block",
+            Context::Inst => "an instruction",
+            Context::InstResult => "the result of an instruction",
+            Context::InstOp => "the opcode of an instruction",
+            Context::ArithInst => "an arithmetic instruction",
+            Context::ExtractValueInst => "an `extractvalue` instruction",
+            Context::InsertValueInst => "an `insertvalue` instruction",
+            Context::AllocaInst => "an `alloca` instruction",
+            Context::LoadInst => "a `load` instruction",
+            Context::StoreInst => "a `store` instruction",
+            Context::ICmpInst => "an `icmp` instruction",
+            Context::PhiInst => "a `phi` instruction",
+            Context::CallInst => "a `call` instruction",
+            Context::RetInst => "a `ret` instruction",
+            Context::BrInst => "a `br` instruction",
+            Context::Cond => "a Boolean conditional",
+            Context::Val => "a value",
+            Context::Type => "a type",
+            Context::StructType => "a struct type",
+            Context::ArrayType => "an array type",
+            Context::Lit => "a literal",
+            Context::StructLit => "a struct literal",
+            Context::ArrayLit => "an array literal",
+        })
     }
 }
