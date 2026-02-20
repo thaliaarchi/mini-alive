@@ -32,6 +32,14 @@ pub struct BBlock {
 impl fmt::Display for Func {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "define {} {}(", self.ret_ty, self.name)?;
+        let mut first = true;
+        for (ty, name) in &self.params {
+            if !first {
+                f.write_str(", ")?;
+            }
+            first = false;
+            write!(f, "{ty} {name}")?;
+        }
         f.write_str(") {\n")?;
         let mut first = true;
         for bb in &self.bbs {
@@ -51,7 +59,7 @@ impl fmt::Display for BBlock {
             writeln!(f, "{label}:")?;
         }
         for inst in &self.insts {
-            writeln!(f, "    {inst}")?;
+            writeln!(f, "  {inst}")?;
         }
         Ok(())
     }

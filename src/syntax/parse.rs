@@ -639,7 +639,7 @@ impl fmt::Display for Error<'_> {
             "{:>n$} | {:>start$}{}",
             "",
             "",
-            "^".repeat((span.end().column() - span.start().column()).min(1)),
+            "^".repeat((span.end().column() - span.start().column()).max(1)),
             n = width,
             start = span.start().column() - 1,
         )?;

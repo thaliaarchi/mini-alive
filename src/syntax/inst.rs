@@ -382,7 +382,7 @@ impl fmt::Display for Phi {
                 f.write_str(",")?;
             }
             first = false;
-            write!(f, " [{val}, {pred}]")?;
+            write!(f, " [ {val}, {pred} ]")?;
         }
         Ok(())
     }

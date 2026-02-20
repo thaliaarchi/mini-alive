@@ -82,3 +82,111 @@ fn bools() {
         assert!(lit.valid());
     }
 }
+
+#[test]
+fn instructions() {
+    let src = "ret i16 5
+ret { i16, i16 } { i16 4, i16 2 }
+ret {[3 x i16], {ptr, {}}}
+    {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}
+";
+    let mut parser = Parser::new(src, "test");
+    let mut insts = Vec::new();
+    while !parser.eof() {
+        insts.push(parser.parse_inst().unwrap().to_string());
+    }
+    assert_eq!(
+        insts,
+        [
+            "ret i16 5",
+            "ret {i16, i16} {i16 4, i16 2}",
+            "ret {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}"
+        ]
+    );
+}
+
+#[test]
+fn functions() {
+    let tests = [
+        "define {[3 x i16], {ptr, {}}} @src() {
+  ret {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}
+}
+",
+        "define i16 @popcnt(i16 %x) {
+entry:
+  br label %while.cond
+
+while.cond:
+  %x.addr.0 = phi i16 [ %x, %entry ], [ %and, %while.body ]
+  %c.0 = phi i16 [ 0, %entry ], [ %inc, %while.body ]
+  %tobool.not = icmp eq i16 %x.addr.0, 0
+  br i1 %tobool.not, label %while.end, label %while.body
+
+while.body:
+  %sub = add i16 %x.addr.0, -1
+  %and = and i16 %x.addr.0, %sub
+  %inc = add i16 %c.0, 1
+  br label %while.cond
+
+while.end:
+  ret i16 %c.0
+}
+",
+    ];
+    for src in tests {
+        let mut parser = Parser::new(src, "test");
+        let func = parser.parse_func().unwrap();
+        assert_eq!(func.to_string(), src);
+        assert!(parser.eof());
+    }
+}
+
+#[test]
+fn diagnostics() {
+    let tests = [
+        (
+            "define i16 src() {",
+            "Error: expected global name (@); found identifier `src`
+ --> errs.ll:1:12-1:15
+  |
+1 | define i16 src() {
+  |            ^^^
+  |
+  = context: parsing a function
+",
+        ),
+        (
+            "
+define {[0 x i16], ptr} @src() { ret label l2 }",
+            "Error: unknown type name; found identifier `label`
+ --> errs.ll:2:38-2:43
+  |
+2 | define {[0 x i16], ptr} @src() { ret label l2 }
+  |                                      ^^^^^
+  |
+  = context: parsing a type
+",
+        ),
+        (
+            "
+
+define i16 @src() {
+  %x = extractvalue {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, 3], {ptr, {}} {ptr null, {} {}}}, 0, 1
+  ret i16 %x
+}
+","Error: expected identifier, `{`, or `[`; found integer literal `3`
+ --> errs.ll:4:70
+  |
+4 |   %x = extractvalue {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, 3], {ptr, {}} {ptr null, {} {}}}, 0, 1
+  |                                                                      ^
+  |
+  = context: parsing a type
+"
+        )
+    ];
+    for (src, diagnostic) in tests {
+        let mut parser = Parser::new(src, "errs.ll");
+        let err = parser.parse_func().unwrap_err();
+        assert_eq!(err.to_string(), diagnostic);
+    }
+}
