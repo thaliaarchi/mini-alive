@@ -1,4 +1,6 @@
-# Tokens
+# LLVM IR subset used by Mini-Alive
+
+## Tokens
 
 token ::=
     | ident
@@ -8,13 +10,15 @@ token ::=
     | label
     | "(" | ")" | "{" | "}" | "[" | "]"
     | "," | "="
+ignored ::=
     | space
     | comment
+
 ident ::= [a-zA-Z$._-][a-zA-Z0-9$._-]*
 space ::= [ \t\n\r\0]+
 comment ::= ";" [^\n\r]* | "/*" .*? "*/"
 
-# Syntax
+## Syntax
 
 program ::= func*
 
@@ -32,9 +36,9 @@ struct_lit ::= "{" (type lit ("," type lit)*)? "}"
 array_lit ::= "[" (type lit ("," type lit)*)? "]"
 bool_lit ::= "0" | "1"
 
-global_name ::= "@" name
-local_name ::= "%" name
-label ::= name ":"
+global_name ::= "@" ## name
+local_name ::= "%" ## name
+label ::= name ## ":"
 name ::= ident | [0-9]+
 
 val ::= local_name | int_lit | ptr_lit | struct_lit | array_lit

@@ -1,0 +1,103 @@
+# SMT-LIB
+# https://smt-lib.org/papers/smt-lib-reference-v2.7-r2025-07-07.pdf
+
+## 3.1: Lexicon
+
+token ::=
+    | numeral
+    | decimal
+    | hexadecimal
+    | binary
+    | string
+    | symbol
+    | keyword
+    | reserved
+ignored ::=
+    | whitespace
+    | comment
+
+printable ::= [\u{20}-\u{7E} \u{80}-\u{10FFFF}]
+whitespace ::= "\t" | "\n" | "\r" | " "
+comment ::= ";" [^\n\r]*
+
+numeral ::= "0" | [1-9][0-9]*
+decimal ::= numeral "." "0"* numeral
+hexadecimal ::= "#x" [0-9 a-f A-F]+
+binary ::= "#b" [01]+
+
+string ::= "\"" ([printable -- "\""] | whitespace | "\"\"")* "\""
+
+symbol ::= simple_symbol | quoted_symbol
+simple_symbol ::= ([a-z A-Z] | special_char) ([a-z A-Z 0-9] | special_char)* -- reserved
+special_char ::= [~ ! @ $ % ^ & * _ - + = < > . ? /]
+quoted_symbol ::= "|" ([printable -- "|" -- "\\"] | whitespace) "|"
+
+keyword ::= ":" ## simple_symbol
+
+reserved ::=
+    | "BINARY" | "DECIMAL" | "HEXADECIMAL" | "NUMERAL" | "STRING"
+    | "_" | "!" | "as" | "lambda" | "let" | "exists" | "forall" | "match" | "par"
+    | command_name
+# All command names defined in section 3.11
+command_name ::= "set-logic" | "set-option" | ...
+
+## 3.2 S-expressions
+
+s_expr ::= special_const | symbol | reserved | keyword | "(" s_expr* ")"
+special_const ::= numeral | decimal | hexadecimal | binary | string
+
+## 3.3 Identifiers
+
+ident ::= symbol | "(" "_" index+ ")"
+index ::= numeral | symbol
+
+## 3.4 Attributes
+
+attr ::= keyword attr_value?
+attr_value ::= s_expr -- reserved -- keyword
+
+## 3.5 Sorts
+
+sort ::= ident | "(" ident sort+ ")"
+
+## 3.6 Terms and Formulas
+
+term ::=
+    | special_const
+    | qualified_ident
+    | "(" qualified_ident term+ ")"
+    | "(" "let" "(" var_binding+ ")" term ")"
+    | "(" "lambda" "(" sorted_var+ ")" term ")"
+    | "(" "forall" "(" sorted_var+ ")" term ")"
+    | "(" "exists" "(" sorted_var+ ")" term ")"
+    | "(" "match" term "(" match_case+ ")" ")"
+    | "(" "!" term attr+ ")"
+
+qualified_ident ::= ident | "(" "as" ident sort ")"
+var_binding ::= "(" symbol term ")"
+sorted_var ::= "(" symbol sort ")"
+match_case ::= "(" pattern term ")"
+pattern ::= symbol_ | "(" symbol symbol_+ ")"
+symbol_ ::= symbol | "_"
+
+## 3.7 Theory Declarations
+
+theory_decl ::= "(" "theory" symbol theory_attr+ ")"
+theory_attr ::=
+    | ":sorts" "(" sort_symbol_decl+ ")"
+    | ":funs" "(" par_fun_symbol_decl+ ")"
+    | ":sorts-description" string
+    | ":funs-description" string
+    | ":definition" string
+    | ":values" string
+    | ":notes" string
+    | attr
+sort_symbol_decl ::= "(" ident numeral attr* ")"
+par_fun_symbol_decl ::=
+    | fun_symbol_decl
+    | "(" "par" "(" symbol+ ")" "(" ident sort+ attr* ")" ")"
+fun_symbol_decl ::=
+    | "(" spec_constant sort attr* ")"
+    | "(" meta_special_const sort attr* ")"
+    | "(" ident sort+ attr* ")"
+meta_special_const ::= "NUMERAL" | "DECIMAL" | "STRING"
