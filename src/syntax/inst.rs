@@ -2,7 +2,10 @@
 
 use std::fmt;
 
-use crate::syntax::value::{Cond, GlobalName, LocalName, Type, TypedVal, Val, make_enum};
+use crate::{
+    syntax::value::{Cond, GlobalName, LocalName, Type, TypedVal, Val},
+    util::make_enum,
+};
 
 /// An instruction.
 #[derive(Clone, Debug, PartialEq, Eq)]

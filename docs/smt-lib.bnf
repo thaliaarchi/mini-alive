@@ -38,8 +38,6 @@ reserved ::=
     | "BINARY" | "DECIMAL" | "HEXADECIMAL" | "NUMERAL" | "STRING"
     | "_" | "!" | "as" | "lambda" | "let" | "exists" | "forall" | "match" | "par"
     | command_name
-# All command names defined in section 3.11
-command_name ::= "set-logic" | "set-option" | ...
 
 ## 3.2 S-expressions
 
@@ -101,3 +99,58 @@ fun_symbol_decl ::=
     | "(" meta_special_const sort attr* ")"
     | "(" ident sort+ attr* ")"
 meta_special_const ::= "NUMERAL" | "DECIMAL" | "STRING"
+
+## 3.11 Scripts
+
+command ::=
+    | "(" "assert" term ")"
+    | "(" "check-sat" ")"
+    | "(" "check-sat-assuming" "(" term* ")" ")"
+    | "(" "declare-const" symbol sort ")"
+    | "(" "declare-datatype" symbol datatype_decl ")"
+    | "(" "declare-datatypes" "(" sort_decl{n+1} ")" "(" datatype_decl{n+1} ")" ")"
+    | "(" "declare-fun" symbol "(" sort* ")" sort ")"
+    | "(" "declare-sort" symbol numeral ")"
+    | "(" "declare-sort-parameter" symbol ")"
+    | "(" "define-const" symbol sort term ")"
+    | "(" "define-fun" function_def ")"
+    | "(" "define-fun-rec" function_def ")"
+    | "(" "define-funs-rec" "(" function_decl{n+1} ")" "(" term{n+1} ")" ")"
+    | "(" "define-sort" symbol "(" symbol* ")" sort ")"
+    | "(" "echo" string ")"
+    | "(" "exit" ")"
+    | "(" "get-assertions" ")"
+    | "(" "get-assignment" ")"
+    | "(" "get-info" info_flag ")"
+    | "(" "get-model" ")"
+    | "(" "get-option" keyword ")"
+    | "(" "get-proof" ")"
+    | "(" "get-unsat-assumptions" ")"
+    | "(" "get-unsat-core" ")"
+    | "(" "get-value" "(" term+ ")" ")"
+    | "(" "pop" numeral ")"
+    | "(" "push" numeral ")"
+    | "(" "reset" ")"
+    | "(" "reset-assertions" ")"
+    | "(" "set-info" attr ")"
+    | "(" "set-logic" symbol ")"
+    | "(" "set-option" option ")"
+
+command_name ::=
+    | "assert" | "check-sat" | "check-sat-assuming" | "declare-const"
+    | "declare-datatype" | "declare-datatypes" | "declare-fun" | "declare-sort"
+    | "declare-sort-parameter" | "define-const" | "define-fun"
+    | "define-fun-rec" | "define-funs-rec" | "define-sort" | "echo" | "exit"
+    | "get-assertions" | "get-assignment" | "get-info" | "get-model"
+    | "get-option" | "get-proof" | "get-unsat-assumptions" | "get-unsat-core"
+    | "get-value" | "pop" | "push" | "reset" | "reset-assertions" | "set-info"
+    | "set-logic" | "set-option"
+
+sort_decl ::= "(" symbol numeral ")"
+selector_decl ::= "(" symbol sort ")"
+constructor_decl ::= "(" symbol selector_decl* ")"
+datatype_decl ::=
+    | "(" constructor_decl+ ")"
+    | "(" "par" "(" symbol+ ")" "(" constructor_decl+ ")" ")"
+function_decl ::= "(" symbol "(" sorted_var* ")" sort ")"
+function_def ::= symbol "(" sorted_var* ")" sort term

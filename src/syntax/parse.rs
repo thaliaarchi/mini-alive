@@ -1,6 +1,6 @@
 //! Parsing Mini-Alive source.
 
-use std::{cell::Cell, ffi::OsStr, fmt, num::ParseIntError, str::FromStr};
+use std::{cell::Cell, error, ffi::OsStr, fmt, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
     func::{BBlock, Func},
@@ -46,7 +46,7 @@ pub enum ErrorKind {
     TypeName,
     /// Unknown literal name.
     LitName,
-    /// Failed to parse an integer literal.
+    /// Failed to parse integer literal.
     IntLit(ParseIntError),
     /// Instruction missing required result value.
     MissingResult,
@@ -716,3 +716,5 @@ impl fmt::Display for Context {
         })
     }
 }
+
+impl error::Error for Error<'_> {}
