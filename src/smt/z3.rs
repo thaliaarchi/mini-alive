@@ -4,7 +4,7 @@ use std::{ffi::CStr, fmt, ops::Index};
 
 use z3_sys::{ErrorCode, Z3_ast, Z3_context, Z3_get_error_code, Z3_get_error_msg, Z3_sort};
 
-use crate::smt::ir::{Bool, Bv, Sort, TermId};
+use crate::smt::ir::{Sort, Term, TermId};
 
 /// A builder for producing Z3 queries from SMT IR.
 pub struct Z3Builder {
@@ -41,60 +41,62 @@ impl Z3Builder {
         }
     }
 
-    /// Lowers an SMT IR bool to Z3.
-    pub fn lower_bool(&self, b: &Bool) -> Result<Z3_ast, Error> {
-        Ok(match *b {
-            Bool::Const { value } => {
+    /// Lowers an SMT IR term to Z3.
+    pub fn lower_term(&self, term: &Term) -> Result<Z3_ast, Error> {
+        Ok(match *term {
+            Term::BoolConst { value } => {
                 if value {
                     cvt!(Z3_mk_true(self.ctx))
                 } else {
                     cvt!(Z3_mk_false(self.ctx))
                 }
             }
-            Bool::And { lhs, rhs } => cvt!(Z3_mk_and(self.ctx, 2, [self[lhs], self[rhs]].as_ptr())),
-            Bool::Or { lhs, rhs } => cvt!(Z3_mk_or(self.ctx, 2, [self[lhs], self[rhs]].as_ptr())),
-            Bool::Not { arg } => cvt!(Z3_mk_not(self.ctx, self[arg])),
-            Bool::Eq { lhs, rhs } => cvt!(Z3_mk_eq(self.ctx, self[lhs], self[rhs])),
-            Bool::Ite { cond, then_, else_ } => {
+            Term::BoolAnd { lhs, rhs } => {
+                cvt!(Z3_mk_and(self.ctx, 2, [self[lhs], self[rhs]].as_ptr()))
+            }
+            Term::BoolOr { lhs, rhs } => {
+                cvt!(Z3_mk_or(self.ctx, 2, [self[lhs], self[rhs]].as_ptr()))
+            }
+            Term::BoolNot { arg } => cvt!(Z3_mk_not(self.ctx, self[arg])),
+            Term::Eq { lhs, rhs } => cvt!(Z3_mk_eq(self.ctx, self[lhs], self[rhs])),
+            Term::Ite { cond, then_, else_ } => {
                 cvt!(Z3_mk_ite(self.ctx, self[cond], self[then_], self[else_]))
             }
-        })
-    }
-
-    /// Lowers an SMT IR bit-vector to Z3.
-    pub fn lower_bv(&self, bv: &Bv) -> Result<Z3_ast, Error> {
-        Ok(match *bv {
-            Bv::Int64 { value, bits } => {
+            Term::BvInt64 { value, bits } => {
                 let sort = cvt!(Z3_mk_bv_sort(self.ctx, bits));
                 cvt!(Z3_mk_int64(self.ctx, value, sort))
             }
-            Bv::UInt64 { value, bits } => {
+            Term::BvUInt64 { value, bits } => {
                 let sort = cvt!(Z3_mk_bv_sort(self.ctx, bits));
                 cvt!(Z3_mk_unsigned_int64(self.ctx, value, sort))
             }
-            Bv::Add { lhs, rhs } => cvt!(Z3_mk_bvadd(self.ctx, self[lhs], self[rhs])),
-            Bv::Sub { lhs, rhs } => cvt!(Z3_mk_bvsub(self.ctx, self[lhs], self[rhs])),
-            Bv::Mul { lhs, rhs } => cvt!(Z3_mk_bvmul(self.ctx, self[lhs], self[rhs])),
-            Bv::SDiv { lhs, rhs } => cvt!(Z3_mk_bvsdiv(self.ctx, self[lhs], self[rhs])),
-            Bv::UDiv { lhs, rhs } => cvt!(Z3_mk_bvudiv(self.ctx, self[lhs], self[rhs])),
-            Bv::SRem { lhs, rhs } => cvt!(Z3_mk_bvsrem(self.ctx, self[lhs], self[rhs])),
-            Bv::URem { lhs, rhs } => cvt!(Z3_mk_bvurem(self.ctx, self[lhs], self[rhs])),
-            Bv::Neg { arg } => cvt!(Z3_mk_bvneg(self.ctx, self[arg])),
-            Bv::Shl { lhs, rhs } => cvt!(Z3_mk_bvshl(self.ctx, self[lhs], self[rhs])),
-            Bv::AShr { lhs, rhs } => cvt!(Z3_mk_bvashr(self.ctx, self[lhs], self[rhs])),
-            Bv::LShr { lhs, rhs } => cvt!(Z3_mk_bvlshr(self.ctx, self[lhs], self[rhs])),
-            Bv::And { lhs, rhs } => cvt!(Z3_mk_bvand(self.ctx, self[lhs], self[rhs])),
-            Bv::Or { lhs, rhs } => cvt!(Z3_mk_bvor(self.ctx, self[lhs], self[rhs])),
-            Bv::Xor { lhs, rhs } => cvt!(Z3_mk_bvxor(self.ctx, self[lhs], self[rhs])),
-            Bv::Not { arg: bv } => cvt!(Z3_mk_bvnot(self.ctx, self[bv])),
-            Bv::SignExt { bv, extend_by } => cvt!(Z3_mk_sign_ext(self.ctx, extend_by, self[bv])),
-            Bv::ZeroExt { bv, extend_by } => cvt!(Z3_mk_zero_ext(self.ctx, extend_by, self[bv])),
-            Bv::Concat { lhs, rhs } => cvt!(Z3_mk_concat(self.ctx, self[lhs], self[rhs])),
-            Bv::Extract { bv, ref bits } => {
+            Term::BvAdd { lhs, rhs } => cvt!(Z3_mk_bvadd(self.ctx, self[lhs], self[rhs])),
+            Term::BvSub { lhs, rhs } => cvt!(Z3_mk_bvsub(self.ctx, self[lhs], self[rhs])),
+            Term::BvMul { lhs, rhs } => cvt!(Z3_mk_bvmul(self.ctx, self[lhs], self[rhs])),
+            Term::BvSDiv { lhs, rhs } => cvt!(Z3_mk_bvsdiv(self.ctx, self[lhs], self[rhs])),
+            Term::BvUDiv { lhs, rhs } => cvt!(Z3_mk_bvudiv(self.ctx, self[lhs], self[rhs])),
+            Term::BvSRem { lhs, rhs } => cvt!(Z3_mk_bvsrem(self.ctx, self[lhs], self[rhs])),
+            Term::BvURem { lhs, rhs } => cvt!(Z3_mk_bvurem(self.ctx, self[lhs], self[rhs])),
+            Term::BvNeg { arg } => cvt!(Z3_mk_bvneg(self.ctx, self[arg])),
+            Term::BvShl { lhs, rhs } => cvt!(Z3_mk_bvshl(self.ctx, self[lhs], self[rhs])),
+            Term::BvAShr { lhs, rhs } => cvt!(Z3_mk_bvashr(self.ctx, self[lhs], self[rhs])),
+            Term::BvLShr { lhs, rhs } => cvt!(Z3_mk_bvlshr(self.ctx, self[lhs], self[rhs])),
+            Term::BvAnd { lhs, rhs } => cvt!(Z3_mk_bvand(self.ctx, self[lhs], self[rhs])),
+            Term::BvOr { lhs, rhs } => cvt!(Z3_mk_bvor(self.ctx, self[lhs], self[rhs])),
+            Term::BvXor { lhs, rhs } => cvt!(Z3_mk_bvxor(self.ctx, self[lhs], self[rhs])),
+            Term::BvNot { arg: bv } => cvt!(Z3_mk_bvnot(self.ctx, self[bv])),
+            Term::BvSignExt { bv, extend_by } => {
+                cvt!(Z3_mk_sign_ext(self.ctx, extend_by, self[bv]))
+            }
+            Term::BvZeroExt { bv, extend_by } => {
+                cvt!(Z3_mk_zero_ext(self.ctx, extend_by, self[bv]))
+            }
+            Term::BvConcat { lhs, rhs } => cvt!(Z3_mk_concat(self.ctx, self[lhs], self[rhs])),
+            Term::BvExtract { bv, ref bits } => {
                 cvt!(Z3_mk_extract(self.ctx, bits.end, bits.start, self[bv]))
             }
-            Bv::Sle { lhs, rhs } => cvt!(Z3_mk_bvsle(self.ctx, self[lhs], self[rhs])),
-            Bv::Ule { lhs, rhs } => cvt!(Z3_mk_bvule(self.ctx, self[lhs], self[rhs])),
+            Term::BvSle { lhs, rhs } => cvt!(Z3_mk_bvsle(self.ctx, self[lhs], self[rhs])),
+            Term::BvUle { lhs, rhs } => cvt!(Z3_mk_bvule(self.ctx, self[lhs], self[rhs])),
         })
     }
 
