@@ -17,4 +17,6 @@ is 16-bit words. This eliminates large SMT case splits for alignment and
 provenance split between accesses. You can think of this as the memory model of
 B on a PDP-11 (and the project's name is an oblique reference to Mini-UNIX).
 
+Mini-Alive emits SMT solver queries via an SMT IR, which can lower to Z3.
+
 License: MPL-2.0
