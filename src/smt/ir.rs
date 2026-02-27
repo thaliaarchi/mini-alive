@@ -5,6 +5,8 @@ use std::{
     ops::{Index, Range},
 };
 
+use crate::util::make_id;
+
 // TODO:
 // - Validate sorts on insertion.
 // - Should sorts be stored with terms? If they're interned, that would make
@@ -28,9 +30,11 @@ pub enum Sort {
     },
 }
 
-/// The ID of a term in a context.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct TermId(u32);
+make_id! {
+    /// The ID of a term in a context.
+    pub struct TermId(..);
+    iter TermIdIter "term IDs";
+}
 
 /// An SMT IR expression.
 #[expect(missing_docs)]
@@ -107,9 +111,14 @@ impl Context {
 
     /// Inserts a term into the context and returns its ID.
     pub fn insert(&mut self, term: Term) -> TermId {
-        let id = TermId(self.terms.len().try_into().unwrap());
         self.terms.push(term);
-        id
+        assert!(u32::try_from(self.terms.len()).is_ok(), "TermId overflow");
+        TermId(self.terms.len() as u32 - 1)
+    }
+
+    /// Returns an iterator over the IDs of the terms in the context.
+    pub fn term_ids(&self) -> TermIdIter {
+        TermId::iter(TermId(0)..TermId(self.terms.len() as _))
     }
 }
 
@@ -120,13 +129,6 @@ impl Sort {
             Sort::Bv { bits } => bits,
             _ => panic!("expected bit-vector, but found {self}"),
         }
-    }
-}
-
-impl TermId {
-    /// Gets the index of the term ID.
-    pub fn as_usize(self) -> usize {
-        self.0 as usize
     }
 }
 
@@ -185,7 +187,7 @@ impl Index<TermId> for Context {
 impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, term) in self.terms.iter().enumerate() {
-            let id = TermId(i as _);
+            let id = TermId(i as u32);
             let sort = term.sort(self);
             writeln!(f, "{id} : {sort} = {term}")?;
         }

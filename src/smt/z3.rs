@@ -2,9 +2,9 @@
 
 use std::{ffi::CStr, fmt, ops::Index};
 
-use z3_sys::{ErrorCode, Z3_ast, Z3_context, Z3_get_error_code, Z3_get_error_msg, Z3_sort};
+use z3_sys::{ErrorCode, Z3_ast, Z3_context, Z3_get_error_code, Z3_get_error_msg};
 
-use crate::smt::ir::{Sort, Term, TermId};
+use crate::smt::ir::{Context, Term, TermId};
 
 /// A builder for producing Z3 queries from SMT IR.
 pub struct Z3Builder {
@@ -41,8 +41,16 @@ impl Z3Builder {
         }
     }
 
+    /// Lowers SMT IR to Z3.
+    pub fn lower(&mut self, ctx: &Context) -> Result<(), Error> {
+        for id in ctx.term_ids() {
+            self.terms[id.as_usize()] = Some(self.lower_term(&ctx[id])?);
+        }
+        Ok(())
+    }
+
     /// Lowers an SMT IR term to Z3.
-    pub fn lower_term(&self, term: &Term) -> Result<Z3_ast, Error> {
+    fn lower_term(&self, term: &Term) -> Result<Z3_ast, Error> {
         Ok(match *term {
             Term::BoolConst { value } => {
                 if value {
@@ -97,14 +105,6 @@ impl Z3Builder {
             }
             Term::BvSle { lhs, rhs } => cvt!(Z3_mk_bvsle(self.ctx, self[lhs], self[rhs])),
             Term::BvUle { lhs, rhs } => cvt!(Z3_mk_bvule(self.ctx, self[lhs], self[rhs])),
-        })
-    }
-
-    /// Lowers an SMT IR sort to Z3.
-    pub fn lower_sort(&self, sort: Sort) -> Result<Z3_sort, Error> {
-        Ok(match sort {
-            Sort::Bool => cvt!(Z3_mk_bool_sort(self.ctx)),
-            Sort::Bv { bits } => cvt!(Z3_mk_bv_sort(self.ctx, bits)),
         })
     }
 }
