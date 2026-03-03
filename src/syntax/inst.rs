@@ -226,6 +226,28 @@ pub struct Br2 {
     pub label_false: LocalName,
 }
 
+macro_rules! impl_from_for_inst(($($Ty:ident),* $(,)?) => {
+    $(impl From<$Ty> for Inst {
+        fn from(inst: $Ty) -> Self {
+            Inst::$Ty(inst)
+        }
+    })*
+});
+impl_from_for_inst! {
+    Arith,
+    ExtractValue,
+    InsertValue,
+    Alloca,
+    Load,
+    Store,
+    ICmp,
+    Phi,
+    Call,
+    Ret,
+    Br1,
+    Br2,
+}
+
 impl InstData for Arith {
     fn result(&self) -> Option<&LocalName> {
         Some(&self.result)

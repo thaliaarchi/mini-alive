@@ -218,7 +218,7 @@ impl<'s> Parser<'s> {
             let lhs = self.parse_val()?;
             self.expect(Token::Comma)?;
             let rhs = self.parse_val()?;
-            return Ok(Inst::Arith(Arith {
+            return Ok(Inst::from(Arith {
                 result,
                 op: arith,
                 ty,
@@ -233,7 +233,7 @@ impl<'s> Parser<'s> {
                 let agg = self.parse_typed_val()?;
                 self.expect(Token::Comma)?;
                 let indices = self.parse_indices()?;
-                return Ok(Inst::ExtractValue(ExtractValue {
+                return Ok(Inst::from(ExtractValue {
                     result,
                     agg,
                     indices,
@@ -247,7 +247,7 @@ impl<'s> Parser<'s> {
                 let val = self.parse_typed_val()?;
                 self.expect(Token::Comma)?;
                 let indices = self.parse_indices()?;
-                Ok(Inst::InsertValue(InsertValue {
+                Ok(Inst::from(InsertValue {
                     result,
                     agg,
                     val,
@@ -263,7 +263,7 @@ impl<'s> Parser<'s> {
                 } else {
                     None
                 };
-                Ok(Inst::Alloca(Alloca { result, ty, count }))
+                Ok(Inst::from(Alloca { result, ty, count }))
             }
             "load" => {
                 let _ctx = self.with_ctx(Context::LoadInst);
@@ -272,7 +272,7 @@ impl<'s> Parser<'s> {
                 self.expect(Token::Comma)?;
                 let ptr = self.parse_typed_val()?;
                 let align = self.parse_align()?;
-                Ok(Inst::Load(Load {
+                Ok(Inst::from(Load {
                     result,
                     ty,
                     ptr,
@@ -286,7 +286,7 @@ impl<'s> Parser<'s> {
                 self.expect(Token::Comma)?;
                 let ptr = self.parse_typed_val()?;
                 let align = self.parse_align()?;
-                Ok(Inst::Store(Store { val, ptr, align }))
+                Ok(Inst::from(Store { val, ptr, align }))
             }
             "icmp" => {
                 let _ctx = self.with_ctx(Context::ICmpInst);
@@ -299,7 +299,7 @@ impl<'s> Parser<'s> {
                 let lhs = self.parse_val()?;
                 self.expect(Token::Comma)?;
                 let rhs = self.parse_val()?;
-                Ok(Inst::ICmp(ICmp {
+                Ok(Inst::from(ICmp {
                     result,
                     cond,
                     ty,
@@ -323,7 +323,7 @@ impl<'s> Parser<'s> {
                         break;
                     }
                 }
-                Ok(Inst::Phi(Phi {
+                Ok(Inst::from(Phi {
                     result,
                     ty,
                     sources,
@@ -346,7 +346,7 @@ impl<'s> Parser<'s> {
                     }
                 }
                 self.expect(Token::RParen)?;
-                Ok(Inst::Call(Call {
+                Ok(Inst::from(Call {
                     result,
                     ret_ty,
                     func,
@@ -357,7 +357,7 @@ impl<'s> Parser<'s> {
                 let _ctx = self.with_ctx(Context::RetInst);
                 self.forbid_result(result)?;
                 let val = self.parse_typed_val()?;
-                Ok(Inst::Ret(Ret { val }))
+                Ok(Inst::from(Ret { val }))
             }
             "br" => {
                 let _ctx = self.with_ctx(Context::BrInst);
@@ -366,7 +366,7 @@ impl<'s> Parser<'s> {
                 if peek.tok == Token::Ident && peek.text == "label" {
                     self.bump();
                     let label = self.expect_local_name()?;
-                    Ok(Inst::Br1(Br1 { label }))
+                    Ok(Inst::from(Br1 { label }))
                 } else {
                     let cond = self.parse_typed_val()?;
                     self.expect(Token::Comma)?;
@@ -375,7 +375,7 @@ impl<'s> Parser<'s> {
                     self.expect(Token::Comma)?;
                     self.expect_ident("label")?;
                     let label_false = self.expect_local_name()?;
-                    Ok(Inst::Br2(Br2 {
+                    Ok(Inst::from(Br2 {
                         cond,
                         label_true,
                         label_false,
