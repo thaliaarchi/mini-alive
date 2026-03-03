@@ -12,6 +12,9 @@ use crate::syntax::{
     value::{Cond, GlobalName, Lit, LocalName, Type, TypedVal, Val},
 };
 
+// TODO:
+// - Parse attributes, but discard them and warn.
+
 /// A parser for Mini-Alive source.
 pub struct Parser<'s> {
     lexer: Lexer<'s>,
@@ -268,7 +271,13 @@ impl<'s> Parser<'s> {
                 let ty = self.parse_type()?;
                 self.expect(Token::Comma)?;
                 let ptr = self.parse_typed_val()?;
-                Ok(Inst::Load(Load { result, ty, ptr }))
+                let align = self.parse_align()?;
+                Ok(Inst::Load(Load {
+                    result,
+                    ty,
+                    ptr,
+                    align,
+                }))
             }
             "store" => {
                 let _ctx = self.with_ctx(Context::StoreInst);
@@ -276,7 +285,8 @@ impl<'s> Parser<'s> {
                 let val = self.parse_typed_val()?;
                 self.expect(Token::Comma)?;
                 let ptr = self.parse_typed_val()?;
-                Ok(Inst::Store(Store { val, ptr }))
+                let align = self.parse_align()?;
+                Ok(Inst::Store(Store { val, ptr, align }))
             }
             "icmp" => {
                 let _ctx = self.with_ctx(Context::ICmpInst);
@@ -491,6 +501,16 @@ impl<'s> Parser<'s> {
             }
             self.bump();
         }
+    }
+
+    /// Parses an `align` argument for `load` and `store`.
+    fn parse_align(&mut self) -> Result<Option<usize>, Error<'s>> {
+        if self.next_if(Token::Comma).is_none() {
+            return Ok(None);
+        }
+        self.expect_ident("align")?;
+        let align = self.expect_int()?;
+        Ok(Some(align))
     }
 
     fn next(&mut self) -> Lexeme<'s> {

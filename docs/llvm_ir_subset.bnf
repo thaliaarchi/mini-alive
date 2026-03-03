@@ -57,8 +57,8 @@ inst ::=
     | local_name "=" "extractvalue" struct_ty val "," int_lit ("," int_lit)*
     | local_name "=" "insertvalue" struct_ty val "," type val "," int_lit ("," int_lit)*
     | local_name "=" "alloca" type ("," int_ty val)?
-    | local_name "=" "load" type "," ptr_ty val
-    | "store" type val "," ptr_ty val
+    | local_name "=" "load" type "," ptr_ty val ("," "align" int_lit)?
+    | "store" type val "," ptr_ty val ("," "align" int_lit)?
     | local_name "=" "icmp" cond type val "," val
     | local_name "=" "phi" type "[" val "," local_name "]" ("," "[" val "," local_name "]")*
     | local_name "=" "call" type global_name args

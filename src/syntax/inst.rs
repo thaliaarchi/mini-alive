@@ -147,6 +147,8 @@ pub struct Load {
     pub ty: Type,
     /// The address to load from.
     pub ptr: TypedVal,
+    /// The alignment of the operation.
+    pub align: Option<usize>,
 }
 
 /// Memory store: `"store" type val "," ptr_ty val`
@@ -156,6 +158,8 @@ pub struct Store {
     pub val: TypedVal,
     /// The address to store at.
     pub ptr: TypedVal,
+    /// The alignment of the operation.
+    pub align: Option<usize>,
 }
 
 /// Integer comparison: `local_name "=" "icmp" cond type val "," val`
