@@ -264,7 +264,8 @@ mod tests {
         });
         assert_eq!(
             format!("{ctx:?}"),
-            "%0 : bool = false
+            "\
+%0 : bool = false
 %1 : bool = not %0
 %2 : bv64 = int64 1, bits=64
 %3 : bv64 = int64 2, bits=64

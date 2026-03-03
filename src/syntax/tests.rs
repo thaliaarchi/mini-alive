@@ -85,7 +85,8 @@ fn bools() {
 
 #[test]
 fn instructions() {
-    let src = "ret i16 5
+    let src = "\
+ret i16 5
 ret { i16, i16 } { i16 4, i16 2 }
 ret {[3 x i16], {ptr, {}}}
     {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}
@@ -108,11 +109,13 @@ ret {[3 x i16], {ptr, {}}}
 #[test]
 fn functions() {
     let tests = [
-        "define {[3 x i16], {ptr, {}}} @src() {
+        "\
+define {[3 x i16], {ptr, {}}} @src() {
   ret {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}
 }
 ",
-        "define i16 @popcnt(i16 %x) {
+        "\
+define i16 @popcnt(i16 %x) {
 entry:
   br label %while.cond
 
@@ -146,7 +149,8 @@ fn diagnostics() {
     let tests = [
         (
             "define i16 src() {",
-            "Error: expected global name (@); found identifier `src`
+            "\
+Error: expected global name (@); found identifier `src`
  --> errs.ll:1:12-1:15
   |
 1 | define i16 src() {
@@ -158,7 +162,8 @@ fn diagnostics() {
         (
             "
 define {[0 x i16], ptr} @src() { ret label l2 }",
-            "Error: unknown type name; found identifier `label`
+            "\
+Error: unknown type name; found identifier `label`
  --> errs.ll:2:38-2:43
   |
 2 | define {[0 x i16], ptr} @src() { ret label l2 }
@@ -174,7 +179,8 @@ define i16 @src() {
   %x = extractvalue {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, 3], {ptr, {}} {ptr null, {} {}}}, 0, 1
   ret i16 %x
 }
-","Error: expected identifier, `{`, or `[`; found integer literal `3`
+","\
+Error: expected identifier, `{`, or `[`; found integer literal `3`
  --> errs.ll:4:70
   |
 4 |   %x = extractvalue {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, 3], {ptr, {}} {ptr null, {} {}}}, 0, 1

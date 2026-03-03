@@ -1,4 +1,4 @@
-//! SMT-LIB tokens.
+//! SMT-LIB S-expression AST.
 //!
 //! Reference: [*The SMT-LIB Standard*, Version 2.7](https://smt-lib.org/papers/smt-lib-reference-v2.7-r2025-07-07.pdf)
 
@@ -7,12 +7,30 @@ use std::{
     fmt::{self, Write},
 };
 
-use crate::util::make_enum;
+use crate::{smt::smtlib::ListStyle, util::make_enum};
 
-/// An SMT-LIB token. This does not cover fractional, hexadecimal, binary, and
-/// reserved tokens or whitespace and comment ignored tokens.
+/// An S-expression.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Token {
+pub enum SExp {
+    /// Atomic value.
+    Atom(Atom),
+    /// Parenthesized list.
+    List(List),
+}
+
+/// An S-expression list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct List {
+    /// The elements of the list.
+    pub elems: Vec<SExp>,
+    /// The style for pretty-printing the list.
+    pub style: ListStyle,
+}
+
+/// An SMT-LIB atomic value. This does not cover fractional, hexadecimal,
+/// binary, and reserved tokens or whitespace and comment ignored tokens.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Atom {
     /// Integer literal. It is always pretty-printed as decimal, not hexadecimal
     /// or binary.
     Numeral(i64),
@@ -22,6 +40,8 @@ pub enum Token {
     Symbol(Symbol),
     /// Keyword.
     Keyword(Keyword),
+    /// Command name.
+    CommandName(CommandName),
 }
 
 /// An SMT-LIB string literal.
@@ -82,6 +102,18 @@ pub enum Error {
     UnquotableSymbol,
     /// Invalid char in SMT-LIB keyword.
     InvalidKeyword,
+}
+
+impl From<Atom> for SExp {
+    fn from(atom: Atom) -> Self {
+        SExp::Atom(atom)
+    }
+}
+
+impl From<List> for SExp {
+    fn from(list: List) -> Self {
+        SExp::List(list)
+    }
 }
 
 impl StringLit {
@@ -170,13 +202,14 @@ impl fmt::Debug for Keyword {
     }
 }
 
-impl fmt::Display for Token {
+impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Token::Numeral(n) => write!(f, "{n}"),
-            Token::String(s) => s.fmt(f),
-            Token::Symbol(sym) => sym.fmt(f),
-            Token::Keyword(kw) => kw.fmt(f),
+            Atom::Numeral(n) => write!(f, "{n}"),
+            Atom::String(s) => s.fmt(f),
+            Atom::Symbol(sym) => sym.fmt(f),
+            Atom::Keyword(kw) => kw.fmt(f),
+            Atom::CommandName(name) => name.fmt(f),
         }
     }
 }
