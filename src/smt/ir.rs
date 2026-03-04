@@ -95,8 +95,8 @@ pub enum Term {
     BvZeroExt { bv: TermId, extend_by: u32 },
     /// Concatenation.
     BvConcat { lhs: TermId, rhs: TermId },
-    /// Bit extraction.
-    BvExtract { bv: TermId, bits: Range<u32> },
+    /// Bit extraction of bits `low..=high`.
+    BvExtract { bv: TermId, high: u32, low: u32 },
     /// Signed less-then.
     BvSle { lhs: TermId, rhs: TermId },
     /// Unsigned less-than.
@@ -173,8 +173,8 @@ impl Term {
                 let bits = ctx.sort(lhs).unwrap_bits() + ctx.sort(rhs).unwrap_bits();
                 Sort::Bv { bits }
             }
-            Term::BvExtract { ref bits, .. } => {
-                let bits = bits.end - bits.start;
+            Term::BvExtract { high, low, .. } => {
+                let bits = high - low + 1;
                 Sort::Bv { bits }
             }
         }
@@ -244,7 +244,7 @@ impl fmt::Display for Term {
             Term::BvSignExt { bv, extend_by } => write!(f, "signext {bv}, extend_by={extend_by}"),
             Term::BvZeroExt { bv, extend_by } => write!(f, "zeroext {bv}, extend_by={extend_by}"),
             Term::BvConcat { lhs, rhs } => write!(f, "concat {lhs}, {rhs}"),
-            Term::BvExtract { bv, ref bits } => write!(f, "extract {bv}, bits={bits:?}"),
+            Term::BvExtract { bv, high, low } => write!(f, "extract {bv}, bits={low}..={high}"),
             Term::BvSle { lhs, rhs } => write!(f, "sle {lhs}, {rhs}"),
             Term::BvUle { lhs, rhs } => write!(f, "ule {lhs}, {rhs}"),
         }

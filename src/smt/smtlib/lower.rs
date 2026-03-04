@@ -70,12 +70,9 @@ fn lower_term(ctx: &Context, id: TermId) -> SExp {
             call1_indexed("zero_extend", extend_by, lower_term(ctx, bv))
         }
         Term::BvConcat { lhs, rhs } => call2("concat", lower_term(ctx, lhs), lower_term(ctx, rhs)),
-        Term::BvExtract { bv, ref bits } => call1_indexed2(
-            "extract",
-            bits.end as i64,
-            bits.start as i64,
-            lower_term(ctx, bv),
-        ),
+        Term::BvExtract { bv, high, low } => {
+            call1_indexed2("extract", high as i64, low as i64, lower_term(ctx, bv))
+        }
         Term::BvSle { lhs, rhs } => call2("bvsle", lower_term(ctx, lhs), lower_term(ctx, rhs)),
         Term::BvUle { lhs, rhs } => call2("bvule", lower_term(ctx, lhs), lower_term(ctx, rhs)),
     }

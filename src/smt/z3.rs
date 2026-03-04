@@ -100,8 +100,8 @@ impl Z3Builder {
                 cvt!(Z3_mk_zero_ext(self.ctx, extend_by, self[bv]))
             }
             Term::BvConcat { lhs, rhs } => cvt!(Z3_mk_concat(self.ctx, self[lhs], self[rhs])),
-            Term::BvExtract { bv, ref bits } => {
-                cvt!(Z3_mk_extract(self.ctx, bits.end, bits.start, self[bv]))
+            Term::BvExtract { bv, high, low } => {
+                cvt!(Z3_mk_extract(self.ctx, high, low, self[bv]))
             }
             Term::BvSle { lhs, rhs } => cvt!(Z3_mk_bvsle(self.ctx, self[lhs], self[rhs])),
             Term::BvUle { lhs, rhs } => cvt!(Z3_mk_bvule(self.ctx, self[lhs], self[rhs])),
