@@ -5,7 +5,7 @@
 
 use std::iter;
 
-use crate::smt::smtlib::SExp;
+use crate::smt::smtlib::{SExp, Script};
 
 // TODO:
 // - Implement list style for functions, where the name, arguments, and return
@@ -37,6 +37,18 @@ pub enum ListStyle {
     ///    d)
     /// ```
     Hanging,
+}
+
+impl Script {
+    /// Pretty-prints the script.
+    pub fn pretty(&self) -> String {
+        let mut s = String::new();
+        for command in &self.commands {
+            s += &command.pretty();
+            s.push('\n');
+        }
+        s
+    }
 }
 
 impl SExp {

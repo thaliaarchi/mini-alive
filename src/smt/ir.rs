@@ -116,6 +116,11 @@ impl Context {
         TermId(self.terms.len() as u32 - 1)
     }
 
+    /// Gets the sort of a term.
+    pub fn sort(&self, id: TermId) -> Sort {
+        self[id].sort(self)
+    }
+
     /// Returns an iterator over the IDs of the terms in the context.
     pub fn term_ids(&self) -> TermIdIter {
         TermId::iter(TermId(0)..TermId(self.terms.len() as _))
@@ -159,13 +164,13 @@ impl Term {
             | Term::BvXor { lhs, .. }
             | Term::BvNot { arg: lhs }
             | Term::BvSle { lhs, .. }
-            | Term::BvUle { lhs, .. } => ctx[lhs].sort(ctx),
+            | Term::BvUle { lhs, .. } => ctx.sort(lhs),
             Term::BvSignExt { bv, extend_by } | Term::BvZeroExt { bv, extend_by } => {
-                let bits = ctx[bv].sort(ctx).unwrap_bits() + extend_by;
+                let bits = ctx.sort(bv).unwrap_bits() + extend_by;
                 Sort::Bv { bits }
             }
             Term::BvConcat { lhs, rhs } => {
-                let bits = ctx[lhs].sort(ctx).unwrap_bits() + ctx[rhs].sort(ctx).unwrap_bits();
+                let bits = ctx.sort(lhs).unwrap_bits() + ctx.sort(rhs).unwrap_bits();
                 Sort::Bv { bits }
             }
             Term::BvExtract { ref bits, .. } => {
@@ -255,8 +260,8 @@ mod tests {
         let mut ctx = Context::new();
         let b = ctx.insert(Term::BoolConst { value: false });
         let b = ctx.insert(Term::BoolNot { arg: b });
-        let x = ctx.insert(Term::BvInt64 { value: 1, bits: 64 });
-        let y = ctx.insert(Term::BvInt64 { value: 2, bits: 64 });
+        let x = ctx.insert(Term::BvInt64 { value: 1, bits: 8 });
+        let y = ctx.insert(Term::BvInt64 { value: 2, bits: 8 });
         let _z = ctx.insert(Term::Ite {
             cond: b,
             then_: x,
@@ -267,9 +272,9 @@ mod tests {
             "\
 %0 : bool = false
 %1 : bool = not %0
-%2 : bv64 = int64 1, bits=64
-%3 : bv64 = int64 2, bits=64
-%4 : bv64 = ite %1, %2, %3
+%2 : bv8 = int64 1, bits=8
+%3 : bv8 = int64 2, bits=8
+%4 : bv8 = ite %1, %2, %3
 "
         );
     }

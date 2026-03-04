@@ -22,6 +22,13 @@ use crate::{smt::smtlib::ListStyle, util::make_enum};
 //     quoted. Appendix B writes that this applies to both simple and quoted
 //     symbols.
 
+/// A sequence of S-expressions.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Script {
+    /// Top-level commands.
+    pub commands: Vec<SExp>,
+}
+
 /// An S-expression.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SExp {
@@ -142,6 +149,28 @@ pub enum Error {
     EmptyKeyword,
     /// Invalid char in SMT-LIB keyword.
     InvalidKeyword,
+}
+
+impl Script {
+    /// Constructs a new, empty script.
+    pub fn new() -> Self {
+        Script {
+            commands: Vec::new(),
+        }
+    }
+
+    /// Appends a command expression.
+    pub fn push(&mut self, sexp: SExp) {
+        self.commands.push(sexp);
+    }
+}
+
+impl<T: Into<Vec<SExp>>> From<T> for Script {
+    fn from(commands: T) -> Self {
+        Script {
+            commands: commands.into(),
+        }
+    }
 }
 
 impl<T: Into<Atom>> From<T> for SExp {
