@@ -11,14 +11,16 @@ use crate::{smt::smtlib::ListStyle, util::make_enum};
 
 // TODO:
 // - Spec ambiguities:
-//   - Simple symbols cannot start with a digit, but `:56` is an example
-//     keyword.
-//   - Simple symbols cannot be a reserved word, but they should be fine as
-//     keywords.
-//   - Simple symbols starting with `@` or `.` are reserved for solver use, but
-//     this is not stated for quoted symbols and quoted symbols represent the
-//     same symbols, so this changes the meaning of such symbols depending on
-//     whether they're quoted.
+//   - Can keywords start with a digit? Simple symbols cannot start with a digit
+//     and keywords are `:<simple_symbol>`, but the `:56` example keyword
+//     suggests keywords should allow leading digits.
+//   - Can keywords be reserved words? Simple symbols cannot be reserved words,
+//     but they should be fine as keywords.
+//   - Symbols starting with `@` or `.` are reserved for solver use, but section
+//     3.1 writes that this applies only to simple symbols, which would make the
+//     interpretation of such symbols inconsistent, depending on whether they're
+//     quoted. Appendix B writes that this applies to both simple and quoted
+//     symbols.
 
 /// An S-expression.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,8 +132,14 @@ make_enum! {
 pub enum Error {
     /// Non-printable char in SMT-LIB string literal.
     NonPrintableString,
+    /// Non-printable char in SMT-LIB symbol.
+    NonPrintableSymbol,
     /// Unquotable char in SMT-LIB symbol.
     UnquotableSymbol,
+    /// SMT-LIB symbol is reserved for solver use.
+    SolverReservedSymbol,
+    /// SMT-LIB keyword is empty.
+    EmptyKeyword,
     /// Invalid char in SMT-LIB keyword.
     InvalidKeyword,
 }
@@ -164,6 +172,22 @@ impl_from_for_atom! {
     CommandName(CommandName),
 }
 
+macro_rules! printable_pat(() => {
+    // All non-ASCII Unicode is considered printable, so can be processed by
+    // UTF-8 bytes.
+    0x21..=0x7E | 0x80..
+});
+macro_rules! whitespace_pat(() => {
+    b'\t' | b'\n' | b'\r' | b' '
+});
+macro_rules! alphanumeric_pat(() => {
+    b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9'
+});
+macro_rules! special_char_pat(() => {
+    b'~' | b'!' | b'@' | b'$' | b'%' | b'^' | b'&' | b'*' | b'_'
+        | b'-' | b'+' | b'=' | b'<' | b'>' | b'.' | b'?' | b'/'
+});
+
 impl StringLit {
     /// Constructs an SMT-LIB string literal or panics if invalid.
     pub fn new<T: Into<String>>(s: T) -> Self {
@@ -180,7 +204,7 @@ impl StringLit {
     fn try_new_(s: String) -> Result<Self, Error> {
         if s.as_bytes()
             .iter()
-            .all(|&b| is_printable(b) || is_whitespace(b))
+            .all(|&b| matches!(b, printable_pat!() | whitespace_pat!()))
         {
             Ok(StringLit(s))
         } else {
@@ -203,35 +227,35 @@ impl Symbol {
         Symbol::try_new_(sym.into())
     }
     fn try_new_(mut sym: String) -> Result<Self, Error> {
-        if Self::is_simple_symbol(&sym) && Reserved::from_str(&sym).is_none() {
-            Ok(Symbol(sym))
-        } else if Self::can_quote(&sym) {
+        let bytes = sym.as_bytes();
+        let mut quoted = false;
+        if bytes.is_empty() {
+            quoted = true;
+        } else {
+            if bytes[0].is_ascii_digit() {
+                quoted = true;
+            }
+            for &b in bytes {
+                match b {
+                    alphanumeric_pat!() | special_char_pat!() => {}
+                    b'|' | b'\\' => return Err(Error::UnquotableSymbol),
+                    printable_pat!() | whitespace_pat!() => quoted = true,
+                    _ => return Err(Error::NonPrintableSymbol),
+                }
+            }
+            if matches!(bytes[0], b'@' | b'.') {
+                return Err(Error::SolverReservedSymbol);
+            }
+            if Reserved::from_str(&sym).is_some() {
+                quoted = true;
+            }
+        }
+        if quoted {
             sym.reserve(2);
             sym.insert(0, '|');
             sym.push('|');
-            Ok(Symbol(sym))
-        } else {
-            Err(Error::UnquotableSymbol)
         }
-    }
-
-    fn is_simple_symbol(s: &str) -> bool {
-        // Simple symbols starting with `@` or `.` are reserved for solver use,
-        // but it is unclear whether such quoted symbols are also reserved.
-        Self::is_simple_symbol_rest(s) && !matches!(s.as_bytes()[0], b'0'..=b'9' | b'@' | b'.')
-    }
-
-    fn is_simple_symbol_rest(s: &str) -> bool {
-        let s = s.as_bytes();
-        !s.is_empty()
-            && s.iter()
-                .all(|&b| b.is_ascii_alphanumeric() || is_special_char(b))
-    }
-
-    fn can_quote(s: &str) -> bool {
-        s.as_bytes()
-            .iter()
-            .all(|&b| (is_printable(b) || is_whitespace(b)) && b != b'|' && b != b'\\')
+        Ok(Symbol(sym))
     }
 }
 
@@ -249,25 +273,18 @@ impl Keyword {
         Keyword::try_new_(kw.into())
     }
     fn try_new_(kw: String) -> Result<Self, Error> {
-        if Symbol::is_simple_symbol_rest(&kw) {
+        if kw.is_empty() {
+            Err(Error::EmptyKeyword)
+        } else if kw
+            .as_bytes()
+            .iter()
+            .all(|&b| matches!(b, alphanumeric_pat!() | special_char_pat!()))
+        {
             Ok(Keyword(kw))
         } else {
             Err(Error::InvalidKeyword)
         }
     }
-}
-
-fn is_printable(b: u8) -> bool {
-    !matches!(b, 0..=0x1F | 0x7F)
-}
-fn is_whitespace(b: u8) -> bool {
-    matches!(b, b'\t' | b'\n' | b'\r' | b' ')
-}
-#[rustfmt::skip]
-fn is_special_char(b: u8) -> bool {
-    matches!(b,
-        b'~' | b'!' | b'@' | b'$' | b'%' | b'^' | b'&' | b'*' | b'_'
-            | b'-' | b'+' | b'=' | b'<' | b'>' | b'.' | b'?' | b'/')
 }
 
 impl fmt::Debug for StringLit {
@@ -331,7 +348,10 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Error::NonPrintableString => "non-printable char in SMT-LIB string literal",
+            Error::NonPrintableSymbol => "non-printable char in SMT-LIB symbol",
             Error::UnquotableSymbol => "unquotable char in SMT-LIB symbol",
+            Error::SolverReservedSymbol => "SMT-LIB symbol is reserved for solver use",
+            Error::EmptyKeyword => "SMT-LIB keyword is empty",
             Error::InvalidKeyword => "invalid char in SMT-LIB keyword",
         })
     }
@@ -387,8 +407,8 @@ mod tests {
             ("<adf>", "<adf>"),
             ("abc77", "abc77"),
             ("*$s&6", "*$s&6"),
-            (".aaa", "|.aaa|"), // Example has this as a simple symbol
-            (".8", "|.8|"),     // Example has this as a simple symbol
+            // (".aaa", ".aaa"), // Solver-reserved
+            // (".8", ".8"),     // Solver-reserved
             ("+34", "+34"),
             ("-32", "-32"),
             // Quoted symbols:
@@ -456,8 +476,8 @@ mod tests {
             ("BINARY", Ok("|BINARY|")),
             ("_", Ok("|_|")),
             // Reserved for solver:
-            (".abc", Ok("|.abc|")),
-            ("@abc", Ok("|@abc|")),
+            (".abc", Err(Error::SolverReservedSymbol)),
+            ("@abc", Err(Error::SolverReservedSymbol)),
             // But only at the start of a symbol:
             ("a.bc", Ok("a.bc")),
             ("a@bc", Ok("a@bc")),
@@ -466,10 +486,10 @@ mod tests {
             ("a|bc", Err(Error::UnquotableSymbol)),
             ("\\", Err(Error::UnquotableSymbol)),
             ("a\\bc", Err(Error::UnquotableSymbol)),
-            ("\u{07}", Err(Error::UnquotableSymbol)),
-            ("a\u{07}bc", Err(Error::UnquotableSymbol)),
-            ("\u{7F}", Err(Error::UnquotableSymbol)),
-            ("a\u{7F}bc", Err(Error::UnquotableSymbol)),
+            ("\u{07}", Err(Error::NonPrintableSymbol)),
+            ("a\u{07}bc", Err(Error::NonPrintableSymbol)),
+            ("\u{7F}", Err(Error::NonPrintableSymbol)),
+            ("a\u{7F}bc", Err(Error::NonPrintableSymbol)),
         ];
         for (raw, res) in tests {
             assert_eq!(
