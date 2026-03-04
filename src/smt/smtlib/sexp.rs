@@ -9,6 +9,17 @@ use std::{
 
 use crate::{smt::smtlib::ListStyle, util::make_enum};
 
+// TODO:
+// - Spec ambiguities:
+//   - Simple symbols cannot start with a digit, but `:56` is an example
+//     keyword.
+//   - Simple symbols cannot be a reserved word, but they should be fine as
+//     keywords.
+//   - Simple symbols starting with `@` or `.` are reserved for solver use, but
+//     this is not stated for quoted symbols and quoted symbols represent the
+//     same symbols, so this changes the meaning of such symbols depending on
+//     whether they're quoted.
+
 /// An S-expression.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SExp {
@@ -40,6 +51,8 @@ pub enum Atom {
     Symbol(Symbol),
     /// Keyword.
     Keyword(Keyword),
+    /// Reserved word.
+    Reserved(Reserved),
     /// Command name.
     CommandName(CommandName),
 }
@@ -55,6 +68,25 @@ pub struct Symbol(String);
 /// An SMT-LIB keyword.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Keyword(String);
+
+make_enum! {
+    /// An SMT-LIB reserved word.
+    pub enum Reserved;
+    Binary => "BINARY",
+    Decimal => "DECIMAL",
+    Hexadecimal => "HEXADECIMAL",
+    Numeral => "NUMERAL",
+    String => "STRING",
+    Underscore => "_",
+    Bang => "!",
+    As => "as",
+    Lambda => "lambda",
+    Let => "let",
+    Exists => "exists",
+    Forall => "forall",
+    Match => "match",
+    Par => "par",
+}
 
 make_enum! {
     /// An SMT-LIB command name.
@@ -104,9 +136,9 @@ pub enum Error {
     InvalidKeyword,
 }
 
-impl From<Atom> for SExp {
-    fn from(atom: Atom) -> Self {
-        SExp::Atom(atom)
+impl<T: Into<Atom>> From<T> for SExp {
+    fn from(atom: T) -> Self {
+        SExp::Atom(atom.into())
     }
 }
 
@@ -116,9 +148,36 @@ impl From<List> for SExp {
     }
 }
 
+macro_rules! impl_from_for_atom(($($Variant:ident($Ty:ty)),* $(,)?) => {
+    $(impl From<$Ty> for Atom {
+        fn from(value: $Ty) -> Self {
+            Atom::$Variant(value)
+        }
+    })*
+});
+impl_from_for_atom! {
+    Numeral(i64),
+    String(StringLit),
+    Symbol(Symbol),
+    Keyword(Keyword),
+    Reserved(Reserved),
+    CommandName(CommandName),
+}
+
 impl StringLit {
+    /// Constructs an SMT-LIB string literal or panics if invalid.
+    pub fn new<T: Into<String>>(s: T) -> Self {
+        match StringLit::try_new(s) {
+            Ok(s) => s,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
     /// Constructs an SMT-LIB string literal, validated to the allowed grammar.
-    pub fn new(s: String) -> Result<Self, Error> {
+    pub fn try_new<T: Into<String>>(s: T) -> Result<Self, Error> {
+        StringLit::try_new_(s.into())
+    }
+    fn try_new_(s: String) -> Result<Self, Error> {
         if s.as_bytes()
             .iter()
             .all(|&b| is_printable(b) || is_whitespace(b))
@@ -131,9 +190,20 @@ impl StringLit {
 }
 
 impl Symbol {
+    /// Constructs an SMT-LIB symbol or panics if invalid.
+    pub fn new<T: Into<String>>(sym: T) -> Self {
+        match Symbol::try_new(sym) {
+            Ok(sym) => sym,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
     /// Constructs an SMT-LIB symbol, validated to the allowed grammar.
-    pub fn new(mut sym: String) -> Result<Self, Error> {
-        if Self::is_simple_symbol(&sym) {
+    pub fn try_new<T: Into<String>>(sym: T) -> Result<Self, Error> {
+        Symbol::try_new_(sym.into())
+    }
+    fn try_new_(mut sym: String) -> Result<Self, Error> {
+        if Self::is_simple_symbol(&sym) && Reserved::from_str(&sym).is_none() {
             Ok(Symbol(sym))
         } else if Self::can_quote(&sym) {
             sym.reserve(2);
@@ -146,9 +216,14 @@ impl Symbol {
     }
 
     fn is_simple_symbol(s: &str) -> bool {
+        // Simple symbols starting with `@` or `.` are reserved for solver use,
+        // but it is unclear whether such quoted symbols are also reserved.
+        Self::is_simple_symbol_rest(s) && !matches!(s.as_bytes()[0], b'0'..=b'9' | b'@' | b'.')
+    }
+
+    fn is_simple_symbol_rest(s: &str) -> bool {
         let s = s.as_bytes();
         !s.is_empty()
-            && !s[0].is_ascii_digit()
             && s.iter()
                 .all(|&b| b.is_ascii_alphanumeric() || is_special_char(b))
     }
@@ -161,9 +236,20 @@ impl Symbol {
 }
 
 impl Keyword {
+    /// Constructs an SMT-LIB keyword or panics if invalid.
+    pub fn new<T: Into<String>>(kw: T) -> Self {
+        match Keyword::try_new(kw) {
+            Ok(kw) => kw,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
     /// Constructs an SMT-LIB keyword, validated to the allowed grammar.
-    pub fn new(kw: String) -> Result<Self, Error> {
-        if Symbol::is_simple_symbol(&kw) {
+    pub fn try_new<T: Into<String>>(kw: T) -> Result<Self, Error> {
+        Keyword::try_new_(kw.into())
+    }
+    fn try_new_(kw: String) -> Result<Self, Error> {
+        if Symbol::is_simple_symbol_rest(&kw) {
             Ok(Keyword(kw))
         } else {
             Err(Error::InvalidKeyword)
@@ -209,6 +295,7 @@ impl fmt::Display for Atom {
             Atom::String(s) => s.fmt(f),
             Atom::Symbol(sym) => sym.fmt(f),
             Atom::Keyword(kw) => kw.fmt(f),
+            Atom::Reserved(reserved) => reserved.fmt(f),
             Atom::CommandName(name) => name.fmt(f),
         }
     }
@@ -251,3 +338,145 @@ impl fmt::Display for Error {
 }
 
 impl error::Error for Error {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Examples from The SMT-LIB Standard, Version 2.7, 3.1 Lexicon:
+
+    #[test]
+    fn spec_example_strings() {
+        let tests = [
+            ("this is a string literal", r#""this is a string literal""#),
+            ("", r#""""#),
+            (
+                r#"She said: "Bye bye" and left."#,
+                r#""She said: ""Bye bye"" and left.""#,
+            ),
+            (
+                "this is a string literal\nwith a line break in it",
+                "\"this is a string literal\nwith a line break in it\"",
+            ),
+            (
+                r#"\n, \012, \x0A, and \u0008 are not escape sequences"#,
+                r#""\n, \012, \x0A, and \u0008 are not escape sequences""#,
+            ),
+        ];
+        for (raw, literal) in tests {
+            assert_eq!(
+                StringLit::try_new(raw).map(|s| s.to_string()).as_deref(),
+                Ok(literal),
+                "StringLit::try_new({raw:?})",
+            );
+        }
+    }
+
+    #[test]
+    fn spec_example_symbols() {
+        let tests = [
+            // Simple symbols:
+            ("+", "+"),
+            ("<=", "<="),
+            ("x", "x"),
+            ("plus", "plus"),
+            ("**", "**"),
+            ("$", "$"),
+            ("<", "<"),
+            ("sas", "sas"),
+            ("<adf>", "<adf>"),
+            ("abc77", "abc77"),
+            ("*$s&6", "*$s&6"),
+            (".aaa", "|.aaa|"), // Example has this as a simple symbol
+            (".8", "|.8|"),     // Example has this as a simple symbol
+            ("+34", "+34"),
+            ("-32", "-32"),
+            // Quoted symbols:
+            ("this is a quoted symbol", "|this is a quoted symbol|"),
+            ("so is\n this one", "|so is\n this one|"),
+            ("", "||"),
+            (" \" can occur too", "| \" can occur too|"),
+            (
+                "af klj^*0asfe2(&*)&(#^$>>>?\"']]984",
+                "|af klj^*0asfe2(&*)&(#^$>>>?\"']]984|",
+            ),
+        ];
+        for (raw, literal) in tests {
+            assert_eq!(
+                Symbol::try_new(raw).map(|sym| sym.to_string()).as_deref(),
+                Ok(literal),
+                "Symbol::try_new({raw:?})",
+            );
+        }
+    }
+
+    #[test]
+    fn spec_example_keywords() {
+        let tests = [
+            ("date", ":date"),
+            ("a2", ":a2"),
+            ("foo-bar", ":foo-bar"),
+            ("<=", ":<="),
+            ("56", ":56"),
+            ("->", ":->"),
+        ];
+        for (raw, literal) in tests {
+            assert_eq!(
+                Keyword::try_new(raw).map(|kw| kw.to_string()).as_deref(),
+                Ok(literal),
+                "Keyword::try_new({raw:?})",
+            );
+        }
+    }
+
+    // Other tests:
+
+    #[test]
+    fn other_string_cases() {
+        let tests = [
+            // Non-printable and non-whitespace:
+            ("\u{07}", Err(Error::NonPrintableString)),
+            ("a\u{07}bc", Err(Error::NonPrintableString)),
+            ("\u{7F}", Err(Error::NonPrintableString)),
+            ("a\u{7F}bc", Err(Error::NonPrintableString)),
+        ];
+        for (raw, res) in tests {
+            assert_eq!(
+                StringLit::try_new(raw).map(|sym| sym.to_string()),
+                res,
+                "StringLit::try_new({raw:?})",
+            );
+        }
+    }
+
+    #[test]
+    fn other_symbol_cases() {
+        let tests = [
+            // Reserved words:
+            ("BINARY", Ok("|BINARY|")),
+            ("_", Ok("|_|")),
+            // Reserved for solver:
+            (".abc", Ok("|.abc|")),
+            ("@abc", Ok("|@abc|")),
+            // But only at the start of a symbol:
+            ("a.bc", Ok("a.bc")),
+            ("a@bc", Ok("a@bc")),
+            // Unquotable:
+            ("|", Err(Error::UnquotableSymbol)),
+            ("a|bc", Err(Error::UnquotableSymbol)),
+            ("\\", Err(Error::UnquotableSymbol)),
+            ("a\\bc", Err(Error::UnquotableSymbol)),
+            ("\u{07}", Err(Error::UnquotableSymbol)),
+            ("a\u{07}bc", Err(Error::UnquotableSymbol)),
+            ("\u{7F}", Err(Error::UnquotableSymbol)),
+            ("a\u{7F}bc", Err(Error::UnquotableSymbol)),
+        ];
+        for (raw, res) in tests {
+            assert_eq!(
+                Symbol::try_new(raw).map(|sym| sym.to_string()),
+                res.map(|s| s.to_owned()),
+                "Symbol::try_new({raw:?})",
+            );
+        }
+    }
+}
