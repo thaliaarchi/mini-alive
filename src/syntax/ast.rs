@@ -1,12 +1,34 @@
-//! Syntax nodes for values and types.
+//! AST nodes for parsed LLVM IR.
 
 use std::fmt;
 
-use crate::util::make_enum;
+use crate::{syntax::inst::Inst, util::make_enum};
 
 // TODO:
 // - Implement type checking: it needs unification for 0-element arrays and
 //   boolean literals.
+
+/// A function: `"define" type global_name params "{" (entry_bb bb*)? "}"`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Func {
+    /// The return type.
+    pub ret_ty: Type,
+    /// The name of the function.
+    pub name: GlobalName,
+    /// The function parameters.
+    pub params: Vec<(Type, LocalName)>,
+    /// The basic blocks.
+    pub bbs: Vec<BBlock>,
+}
+
+/// A basic block: `label? inst* inst_term`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BBlock {
+    /// The basic block label.
+    pub label: Option<String>,
+    /// The instructions in the basic block.
+    pub insts: Vec<Inst>,
+}
 
 /// A global name (`@`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -128,6 +150,42 @@ impl Lit {
                 .first()
                 .is_none_or(|(ty, _)| elems.iter().all(|(_, lit)| lit.has_type(ty))),
         }
+    }
+}
+
+impl fmt::Display for Func {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "define {} {}(", self.ret_ty, self.name)?;
+        let mut first = true;
+        for (ty, name) in &self.params {
+            if !first {
+                f.write_str(", ")?;
+            }
+            first = false;
+            write!(f, "{ty} {name}")?;
+        }
+        f.write_str(") {\n")?;
+        let mut first = true;
+        for bb in &self.bbs {
+            if !first {
+                f.write_str("\n")?;
+            }
+            first = false;
+            bb.fmt(f)?;
+        }
+        f.write_str("}\n")
+    }
+}
+
+impl fmt::Display for BBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(label) = &self.label {
+            writeln!(f, "{label}:")?;
+        }
+        for inst in &self.insts {
+            writeln!(f, "  {inst}")?;
+        }
+        Ok(())
     }
 }
 

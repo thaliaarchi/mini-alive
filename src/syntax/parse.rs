@@ -3,13 +3,12 @@
 use std::{cell::Cell, error, ffi::OsStr, fmt, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
-    func::{BBlock, Func},
+    ast::{BBlock, Cond, Func, GlobalName, Lit, LocalName, Type, TypedVal, Val},
     inst::{
         Alloca, Arith, ArithOp, Br1, Br2, Call, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
         Ret, Store,
     },
     lex::{Lexeme, Lexer, Token, TokenSet, token_set},
-    value::{Cond, GlobalName, Lit, LocalName, Type, TypedVal, Val},
 };
 
 // TODO:

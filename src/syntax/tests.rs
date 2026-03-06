@@ -1,6 +1,6 @@
 use crate::syntax::{
+    ast::{Lit, Type},
     parse::Parser,
-    value::{Lit, Type},
 };
 
 #[test]

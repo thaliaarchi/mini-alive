@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::{
-    syntax::value::{Cond, GlobalName, LocalName, Type, TypedVal, Val},
+    syntax::ast::{Cond, GlobalName, LocalName, Type, TypedVal, Val},
     util::make_enum,
 };
 
