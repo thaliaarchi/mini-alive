@@ -138,3 +138,165 @@ impl PrettyPrinter {
         unsafe { str::from_utf8_unchecked(&self.indent_buf[..len]) }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::smt::smtlib::{CommandName, List, ListStyle, Reserved, SExp, Script, Symbol};
+
+    macro_rules! sym(($sym:ident) => {
+        SExp::from(Symbol::new(stringify!($sym)))
+    });
+    macro_rules! list(($style:ident $(: $($elem:expr),+ $(,)?)?) => {
+        SExp::from(List {
+            elems: vec![$($($elem.into()),+)?],
+            style: ListStyle::$style,
+        })
+    });
+
+    #[test]
+    fn lists() {
+        assert_eq!(list![Vertical].pretty(), "()");
+        assert_eq!(list![Hanging].pretty(), "()");
+        assert_eq!(list![Vertical: sym!(x)].pretty(), "(x)");
+        assert_eq!(list![Hanging: sym!(x)].pretty(), "(x)");
+        assert_eq!(
+            list![
+                Hanging:
+                sym!(bvand),
+                sym!(x),
+                list![Hanging: Reserved::Underscore, sym!(bv123), 64],
+            ]
+            .pretty(),
+            "(bvand x (_ bv123 64))",
+        );
+        let long = sym!(the_quick_brown_fox_jumps_over_the_lazy_dog_0123456789);
+        assert_eq!(
+            list![Vertical: sym!(bvadd), long.clone(), sym!(y23)].pretty(),
+            "\
+(bvadd
+ the_quick_brown_fox_jumps_over_the_lazy_dog_0123456789
+ y23)",
+        );
+        assert_eq!(
+            list![Hanging: sym!(bvadd), long.clone(), sym!(y23)].pretty(),
+            "\
+(bvadd the_quick_brown_fox_jumps_over_the_lazy_dog_0123456789
+       y23)",
+        );
+    }
+
+    #[test]
+    fn function_example() {
+        // https://microsoft.github.io/z3guide/docs/theories/Bitvectors/
+
+        // (define-fun popcount32 ((v (_ BitVec 32))) (_ BitVec 32)
+        //    (let ((v (bvsub v (bvand (bvlshr v (_ bv1 32)) #x55555555))))
+        //    (let ((v (bvadd (bvand v #x33333333) (bvand (bvlshr v (_ bv2 32)) #x33333333))))
+        //    (bvlshr (bvmul (bvand (bvadd v (bvlshr v (_ bv4 32))) #x0F0F0F0F) #x01010101) (_ bv24 32)))
+        //    )
+        // )
+        //
+        // (simplify (popcount32 #x01234100))
+
+        let mut script = Script::new();
+        let popcount32 = list![Hanging:
+            CommandName::DefineFun,
+            sym!(popcount32),
+            list![Vertical:
+                list![Vertical:
+                    sym!(v),
+                    list![Hanging: Reserved::Underscore, sym!(BitVec), 32],
+                ],
+            ],
+            list![Hanging: Reserved::Underscore, sym!(BitVec), 32],
+            list![Hanging:
+                Reserved::Let,
+                list![Vertical:
+                    list![Vertical:
+                        sym!(v),
+                        list![Hanging:
+                            sym!(bvsub),
+                            sym!(v),
+                            list![Hanging:
+                                sym!(bvand),
+                                list![Hanging:
+                                    sym!(bvlshr),
+                                    sym!(v),
+                                    list![Hanging: Reserved::Underscore, sym!(bv1), 32],
+                                ],
+                                0x55555555,
+                            ],
+                        ],
+                    ],
+                ],
+                list![Hanging:
+                    Reserved::Let,
+                    list![Vertical:
+                        list![Vertical:
+                            sym!(v),
+                            list![Hanging:
+                                sym!(bvadd),
+                                list![Hanging:
+                                    sym!(bvand),
+                                    sym!(v),
+                                    0x33333333,
+                                ],
+                                list![Hanging:
+                                    sym!(bvand),
+                                    list![Hanging:
+                                        sym!(bvlshr),
+                                        sym!(v),
+                                        list![Hanging: Reserved::Underscore, sym!(bv2), 32],
+                                    ],
+                                    0x33333333,
+                                ],
+                            ],
+                        ],
+                    ],
+                    list![Hanging:
+                        sym!(bvlshr),
+                        list![Hanging:
+                            sym!(bvmul),
+                            list![Hanging:
+                                sym!(bvand),
+                                list![Hanging:
+                                    sym!(bvadd),
+                                    sym!(v),
+                                    list![Hanging:
+                                        sym!(bvlshr),
+                                        sym!(v),
+                                        list![Hanging: Reserved::Underscore, sym!(bv4), 32],
+                                    ],
+                                ],
+                                0x0F0F0F0F,
+                            ],
+                            0x01010101,
+                        ],
+                        list![Hanging: Reserved::Underscore, sym!(bv24), 32],
+                    ],
+                ],
+            ],
+        ];
+        script.push(popcount32);
+        script.push(list![Hanging:
+            sym!(simplify),
+            list![Hanging: sym!(popcount32), 19087616],
+        ]);
+        assert_eq!(
+            script.pretty(),
+            "\
+(define-fun popcount32
+            ((v (_ BitVec 32)))
+            (_ BitVec 32)
+            (let ((v (bvsub v (bvand (bvlshr v (_ bv1 32)) 1431655765))))
+                 (let ((v
+                        (bvadd (bvand v 858993459)
+                               (bvand (bvlshr v (_ bv2 32)) 858993459))))
+                      (bvlshr (bvmul (bvand (bvadd v (bvlshr v (_ bv4 32))) 252645135)
+                                     16843009)
+                              (_ bv24 32)))))
+(simplify (popcount32 19087616))
+"
+        );
+    }
+}
