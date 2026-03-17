@@ -31,9 +31,9 @@ pub enum Inst {
     /// `ret`
     Ret(Ret),
     /// Unconditional `br`
-    Br1(Br1),
+    UncondBr(UncondBr),
     /// Conditional `br`
-    Br2(Br2),
+    CondBr(CondBr),
 }
 
 /// An instruction opcode.
@@ -210,14 +210,14 @@ pub struct Ret {
 
 /// Unconditional branch: `"br" "label" local_name`
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Br1 {
+pub struct UncondBr {
     /// The label to jump to.
     pub label: LocalName,
 }
 
 /// Conditional branch: `"br" bool_ty bool_val "," "label" local_name "," "label" local_name`
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Br2 {
+pub struct CondBr {
     /// The Boolean condition.
     pub cond: TypedVal,
     /// The label to jump to if the condition is true.
@@ -244,8 +244,8 @@ impl_from_for_inst! {
     Phi,
     Call,
     Ret,
-    Br1,
-    Br2,
+    UncondBr,
+    CondBr,
 }
 
 impl InstData for Arith {
@@ -298,12 +298,12 @@ impl InstData for Ret {
         None
     }
 }
-impl InstData for Br1 {
+impl InstData for UncondBr {
     fn result(&self) -> Option<&LocalName> {
         None
     }
 }
-impl InstData for Br2 {
+impl InstData for CondBr {
     fn result(&self) -> Option<&LocalName> {
         None
     }
@@ -322,8 +322,8 @@ impl fmt::Display for Inst {
             Inst::Phi(phi) => phi,
             Inst::Call(call) => call,
             Inst::Ret(ret) => ret,
-            Inst::Br1(br1) => br1,
-            Inst::Br2(br2) => br2,
+            Inst::UncondBr(br1) => br1,
+            Inst::CondBr(br2) => br2,
         };
         inst.fmt(f)
     }
@@ -441,14 +441,14 @@ impl fmt::Display for Ret {
 }
 
 /// Unconditional branch: `"br" "label" local_name`
-impl fmt::Display for Br1 {
+impl fmt::Display for UncondBr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "br label {}", self.label)
     }
 }
 
 /// Conditional branch: `"br" bool_ty bool_val "," "label" local_name "," "label" local_name`
-impl fmt::Display for Br2 {
+impl fmt::Display for CondBr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

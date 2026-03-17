@@ -5,8 +5,8 @@ use std::{cell::Cell, error, ffi::OsStr, fmt, num::ParseIntError, str::FromStr};
 use crate::syntax::{
     ast::{BBlock, Cond, Func, GlobalName, Lit, LocalName, Type, TypedVal, Val},
     inst::{
-        Alloca, Arith, ArithOp, Br1, Br2, Call, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
-        Ret, Store,
+        Alloca, Arith, ArithOp, Call, CondBr, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
+        Ret, Store, UncondBr,
     },
     lex::{Lexeme, Lexer, Token, TokenSet, token_set},
 };
@@ -365,7 +365,7 @@ impl<'s> Parser<'s> {
                 if peek.tok == Token::Ident && peek.text == "label" {
                     self.bump();
                     let label = self.expect_local_name()?;
-                    Ok(Inst::from(Br1 { label }))
+                    Ok(Inst::from(UncondBr { label }))
                 } else {
                     let cond = self.parse_typed_val()?;
                     self.expect(Token::Comma)?;
@@ -374,7 +374,7 @@ impl<'s> Parser<'s> {
                     self.expect(Token::Comma)?;
                     self.expect_ident("label")?;
                     let label_false = self.expect_local_name()?;
-                    Ok(Inst::from(Br2 {
+                    Ok(Inst::from(CondBr {
                         cond,
                         label_true,
                         label_false,
