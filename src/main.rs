@@ -17,12 +17,12 @@ fn main() {
         }
     };
     let mut parser = Parser::new(&src, &filename);
-    println!("Parsing functions:\n");
+    println!("Parsing top-level items:\n");
     while !parser.eof() {
-        match parser.parse_func() {
-            Ok(func) => {
-                println!("; Debug: {func:?}\n");
-                println!("{func}");
+        match parser.parse_top_level() {
+            Ok(item) => {
+                println!("; Debug: {item:?}\n");
+                println!("{item}");
             }
             Err(err) => {
                 eprint!("{err}");

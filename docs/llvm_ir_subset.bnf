@@ -20,7 +20,8 @@ comment ::= ";" [^\n\r]* | "/*" .*? "*/"
 
 ## Syntax
 
-program ::= func*
+program ::= global*
+global ::= func_define | func_declare
 
 type ::= int_ty | ptr_ty | struct_ty | array_ty
 int_ty ::= "i16"
@@ -44,7 +45,9 @@ name ::= ident | [0-9]+
 val ::= local_name | int_lit | ptr_lit | struct_lit | array_lit
 bool_val ::= local_name | bool_lit
 
-func ::= "define" type global_name params "{" (entry_bb bb*)? "}"
+func_define ::= "define" type global_name params "{" (entry_bb bb*)? "}"
+func_declare ::= "declare" type global_name params
+
 params ::= "(" (param ("," param)*)? ")"
 param ::= type local_name
 args ::= "(" (arg ("," arg)*)? ")"

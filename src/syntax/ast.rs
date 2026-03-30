@@ -8,17 +8,33 @@ use crate::{syntax::inst::Inst, util::make_enum};
 // - Implement type checking: it needs unification for 0-element arrays and
 //   boolean literals.
 
+/// A top-level item.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TopLevel {
+    /// A function definition.
+    Func(Func),
+    /// A function declaration.
+    FuncDeclare(FuncProto),
+}
+
 /// A function: `"define" type global_name params "{" (entry_bb bb*)? "}"`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Func {
+    /// The function prototype.
+    pub proto: FuncProto,
+    /// The basic blocks.
+    pub bbs: Vec<BBlock>,
+}
+
+/// A function prototype: `"declare" type global_name params`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FuncProto {
     /// The return type.
     pub ret_ty: Type,
     /// The name of the function.
     pub name: GlobalName,
     /// The function parameters.
     pub params: Vec<(Type, LocalName)>,
-    /// The basic blocks.
-    pub bbs: Vec<BBlock>,
 }
 
 /// A basic block: `label? inst* inst_term`.
@@ -153,18 +169,19 @@ impl Lit {
     }
 }
 
+impl fmt::Display for TopLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TopLevel::Func(func) => func.fmt(f),
+            TopLevel::FuncDeclare(decl) => decl.fmt(f),
+        }
+    }
+}
+
 impl fmt::Display for Func {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "define {} {}(", self.ret_ty, self.name)?;
-        let mut first = true;
-        for (ty, name) in &self.params {
-            if !first {
-                f.write_str(", ")?;
-            }
-            first = false;
-            write!(f, "{ty} {name}")?;
-        }
-        f.write_str(") {\n")?;
+        self.proto.fmt_proto(f, "define")?;
+        f.write_str(" {\n")?;
         let mut first = true;
         for bb in &self.bbs {
             if !first {
@@ -174,6 +191,27 @@ impl fmt::Display for Func {
             bb.fmt(f)?;
         }
         f.write_str("}\n")
+    }
+}
+
+impl fmt::Display for FuncProto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_proto(f, "declare")?;
+        f.write_str("\n")
+    }
+}
+impl FuncProto {
+    fn fmt_proto(&self, f: &mut fmt::Formatter<'_>, start: &str) -> fmt::Result {
+        write!(f, "{start} {} {}(", self.ret_ty, self.name)?;
+        let mut first = true;
+        for (ty, name) in &self.params {
+            if !first {
+                f.write_str(", ")?;
+            }
+            first = false;
+            write!(f, "{ty} {name}")?;
+        }
+        f.write_str(")")
     }
 }
 

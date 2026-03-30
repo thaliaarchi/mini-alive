@@ -3,7 +3,9 @@
 use std::{cell::Cell, error, ffi::OsStr, fmt, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
-    ast::{BBlock, Cond, Func, GlobalName, Lit, LocalName, Type, TypedVal, Val},
+    ast::{
+        BBlock, Cond, Func, FuncProto, GlobalName, Lit, LocalName, TopLevel, Type, TypedVal, Val,
+    },
     inst::{
         Alloca, Arith, ArithOp, Call, CondBr, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
         Ret, Store, UncondBr,
@@ -44,11 +46,13 @@ pub enum ErrorKind {
     ExpectedToken(TokenSet),
     /// Expected this identifier.
     ExpectedIdent(&'static str),
+    /// Invalid start of top-level item.
+    TopLevel,
     /// Unknown type name.
     TypeName,
     /// Unknown literal name.
     LitName,
-    /// Failed to parse integer literal.
+    /// Invalid integer literal.
     IntLit(ParseIntError),
     /// Instruction missing required result value.
     MissingResult,
@@ -63,10 +67,12 @@ pub enum ErrorKind {
 /// Context in the grammar for a parse error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Context {
-    /// The top-level.
+    /// A top-level item.
     TopLevel,
     /// A function.
     Func,
+    /// A function declaration.
+    FuncDeclare,
     /// A basic block.
     BBlock,
     /// An instruction.
@@ -147,10 +153,40 @@ impl<'s> Parser<'s> {
         self.peek().tok == Token::Eof
     }
 
-    /// Parses a function.
-    pub fn parse_func(&mut self) -> Result<Func, Error<'s>> {
+    /// Parses a top-level item.
+    pub fn parse_top_level(&mut self) -> Result<TopLevel, Error<'s>> {
+        let _ctx = self.with_ctx(Context::TopLevel);
+        let ident = self.expect(Token::Ident)?;
+        match ident.text {
+            "define" => Ok(TopLevel::Func(self.parse_func()?)),
+            "declare" => Ok(TopLevel::FuncDeclare(self.parse_func_declare()?)),
+            _ => Err(self.err(ident, ErrorKind::TopLevel)),
+        }
+    }
+
+    /// Parses a function definition, starting after `"define"`.
+    fn parse_func(&mut self) -> Result<Func, Error<'s>> {
         let _ctx = self.with_ctx(Context::Func);
-        self.expect_ident("define")?;
+        let proto = self.parse_func_proto()?;
+        let mut bbs = Vec::new();
+        self.expect(Token::LBrace)?;
+        loop {
+            if self.next_if(Token::RBrace).is_some() {
+                break;
+            }
+            bbs.push(self.parse_bb()?);
+        }
+        Ok(Func { proto, bbs })
+    }
+
+    /// Parses a function declaration, starting after `"declare"`.
+    fn parse_func_declare(&mut self) -> Result<FuncProto, Error<'s>> {
+        let _ctx = self.with_ctx(Context::FuncDeclare);
+        Ok(self.parse_func_proto()?)
+    }
+
+    /// Parses a function prototype.
+    fn parse_func_proto(&mut self) -> Result<FuncProto, Error<'s>> {
         let ret_ty = self.parse_type()?;
         let name = self.expect_global_name()?;
 
@@ -169,25 +205,15 @@ impl<'s> Parser<'s> {
         }
         self.expect(Token::RParen)?;
 
-        let mut bbs = Vec::new();
-        self.expect(Token::LBrace)?;
-        loop {
-            if self.next_if(Token::RBrace).is_some() {
-                break;
-            }
-            bbs.push(self.parse_bb()?);
-        }
-
-        Ok(Func {
+        Ok(FuncProto {
             ret_ty,
             name,
             params,
-            bbs,
         })
     }
 
     /// Parses a basic block.
-    pub(super) fn parse_bb(&mut self) -> Result<BBlock, Error<'s>> {
+    fn parse_bb(&mut self) -> Result<BBlock, Error<'s>> {
         let _ctx = self.with_ctx(Context::BBlock);
         let label = self
             .next_if(Token::Label)
@@ -292,7 +318,7 @@ impl<'s> Parser<'s> {
                 let result = self.require_result(result, op)?;
                 let cond = self.expect(Token::Ident)?;
                 let Some(cond) = Cond::from_str(cond.text) else {
-                    return Err(self.err(cond, ErrorKind::Cond, self.ctx()));
+                    return Err(self.err(cond, ErrorKind::Cond));
                 };
                 let ty = self.parse_type()?;
                 let lhs = self.parse_val()?;
@@ -381,19 +407,19 @@ impl<'s> Parser<'s> {
                     }))
                 }
             }
-            _ => Err(self.err(op, ErrorKind::UnsupportedInst, self.ctx())),
+            _ => Err(self.err(op, ErrorKind::UnsupportedInst)),
         }
     }
 
     /// Parses a typed value.
-    pub(super) fn parse_typed_val(&mut self) -> Result<TypedVal, Error<'s>> {
+    fn parse_typed_val(&mut self) -> Result<TypedVal, Error<'s>> {
         let ty = self.parse_type()?;
         let val = self.parse_val()?;
         Ok(TypedVal { ty, val })
     }
 
     /// Parses a value.
-    pub(super) fn parse_val(&mut self) -> Result<Val, Error<'s>> {
+    fn parse_val(&mut self) -> Result<Val, Error<'s>> {
         let _ctx = self.with_ctx(Context::Val);
         if self.peek().tok == Token::LocalName {
             Ok(Val::Local(self.expect_local_name()?))
@@ -411,7 +437,7 @@ impl<'s> Parser<'s> {
                 "i16" => Type::I16,
                 "ptr" => Type::Ptr,
                 "i1" => Type::Bool,
-                _ => return Err(self.err(first, ErrorKind::TypeName, self.ctx())),
+                _ => return Err(self.err(first, ErrorKind::TypeName)),
             },
             Token::LBrace => {
                 let _ctx = self.with_ctx(Context::StructType);
@@ -449,7 +475,7 @@ impl<'s> Parser<'s> {
             Token::Int => Lit::I16(self.parse_int(first)?),
             Token::Ident => match first.text {
                 "null" => Lit::Null,
-                _ => return Err(self.err(first, ErrorKind::LitName, self.ctx())),
+                _ => return Err(self.err(first, ErrorKind::LitName)),
             },
             Token::LBrace => {
                 let _ctx = self.with_ctx(Context::StructLit);
@@ -540,7 +566,7 @@ impl<'s> Parser<'s> {
         if expected.contains(lex.tok) {
             Ok(lex)
         } else {
-            Err(self.err(lex, ErrorKind::ExpectedToken(expected), self.ctx()))
+            Err(self.err(lex, ErrorKind::ExpectedToken(expected)))
         }
     }
 
@@ -549,7 +575,7 @@ impl<'s> Parser<'s> {
         if lex.tok == Token::Ident && lex.text == ident {
             Ok(())
         } else {
-            Err(self.err(lex, ErrorKind::ExpectedIdent(ident), self.ctx()))
+            Err(self.err(lex, ErrorKind::ExpectedIdent(ident)))
         }
     }
 
@@ -571,7 +597,7 @@ impl<'s> Parser<'s> {
     fn parse_int<T: FromStr<Err = ParseIntError>>(&self, lex: Lexeme<'s>) -> Result<T, Error<'s>> {
         lex.text
             .parse::<T>()
-            .map_err(|err| self.err(lex, ErrorKind::IntLit(err), self.ctx()))
+            .map_err(|err| self.err(lex, ErrorKind::IntLit(err)))
     }
 
     fn require_result(
@@ -584,18 +610,18 @@ impl<'s> Parser<'s> {
                 debug_assert_eq!(result.tok, Token::LocalName);
                 Ok(LocalName(result.text[1..].to_owned()))
             }
-            None => Err(self.err(op, ErrorKind::MissingResult, self.ctx())),
+            None => Err(self.err(op, ErrorKind::MissingResult)),
         }
     }
 
     fn forbid_result(&self, result: Option<Lexeme<'s>>) -> Result<(), Error<'s>> {
         match result {
-            Some(result) => Err(self.err(result, ErrorKind::UnexpectedResult, self.ctx())),
+            Some(result) => Err(self.err(result, ErrorKind::UnexpectedResult)),
             None => Ok(()),
         }
     }
 
-    fn err(&self, lex: Lexeme<'s>, kind: ErrorKind, ctx: Context) -> Error<'s> {
+    fn err(&self, lex: Lexeme<'s>, kind: ErrorKind) -> Error<'s> {
         let src = self.lexer.src().as_bytes();
         let mut line_start = lex.span.start().offset();
         while line_start != 0 && src[line_start - 1] != b'\n' {
@@ -611,15 +637,10 @@ impl<'s> Parser<'s> {
         Error {
             lex,
             kind,
-            ctx,
+            ctx: self.ctx.get(),
             filename: self.filename.clone(),
             line: &self.lexer.src()[line_start..line_end],
         }
-    }
-
-    /// Gets the current parse context.
-    fn ctx(&self) -> Context {
-        self.ctx.get()
     }
 
     /// Sets the current parse context and returns a guard which will reset it
@@ -693,9 +714,10 @@ impl fmt::Display for ErrorKind {
                 }
             },
             ErrorKind::ExpectedIdent(ident) => write!(f, "expected `{ident}`"),
+            ErrorKind::TopLevel => write!(f, "invalid start of top-level item"),
             ErrorKind::TypeName => write!(f, "unknown type name"),
             ErrorKind::LitName => write!(f, "unknown literal name"),
-            ErrorKind::IntLit(ref err) => write!(f, "failed to parse integer literal: {err}"),
+            ErrorKind::IntLit(ref err) => write!(f, "invalid integer literal: {err}"),
             ErrorKind::MissingResult => write!(f, "instruction missing required result value"),
             ErrorKind::UnexpectedResult => write!(f, "unexpected result value on void instruction"),
             ErrorKind::UnsupportedInst => write!(f, "unsupported instruction"),
@@ -707,8 +729,9 @@ impl fmt::Display for ErrorKind {
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Context::TopLevel => "the top-level",
+            Context::TopLevel => "a top-level item",
             Context::Func => "a function",
+            Context::FuncDeclare => "a function declaration",
             Context::BBlock => "a basic block",
             Context::Inst => "an instruction",
             Context::InstResult => "the result of an instruction",
