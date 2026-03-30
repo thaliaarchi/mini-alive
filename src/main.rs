@@ -17,17 +17,15 @@ fn main() {
         }
     };
     let mut parser = Parser::new(&src, &filename);
-    println!("Parsing top-level items:\n");
-    while !parser.eof() {
-        match parser.parse_top_level() {
-            Ok(item) => {
-                println!("; Debug: {item:?}\n");
-                println!("{item}");
-            }
-            Err(err) => {
-                eprint!("{err}");
-                break;
-            }
+    let module = match parser.parse_module() {
+        Ok(module) => module,
+        Err(err) => {
+            eprintln!("{err}");
+            exit(1);
         }
+    };
+    for item in &module.items {
+        println!("; Debug: {item:?}\n");
+        println!("{item}");
     }
 }

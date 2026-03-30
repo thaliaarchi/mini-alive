@@ -8,6 +8,13 @@ use crate::{syntax::inst::Inst, util::make_enum};
 // - Implement type checking: it needs unification for 0-element arrays and
 //   boolean literals.
 
+/// A module.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Module {
+    /// The top-level items.
+    pub items: Vec<TopLevel>,
+}
+
 /// A top-level item.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TopLevel {
@@ -166,6 +173,20 @@ impl Lit {
                 .first()
                 .is_none_or(|(ty, _)| elems.iter().all(|(_, lit)| lit.has_type(ty))),
         }
+    }
+}
+
+impl fmt::Display for Module {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut first = true;
+        for item in &self.items {
+            if !first {
+                f.write_str("\n")?;
+            }
+            first = false;
+            item.fmt(f)?;
+        }
+        Ok(())
     }
 }
 

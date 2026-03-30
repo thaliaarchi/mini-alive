@@ -107,14 +107,15 @@ ret {[3 x i16], {ptr, {}}}
 }
 
 #[test]
-fn top_level() {
+fn module() {
     let tests = [
         "\
 define {[3 x i16], {ptr, {}}} @src() {
   ret {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}
 }
+
+declare {[3 x i16], {ptr, {}}} @src2()
 ",
-        "declare {[3 x i16], {ptr, {}}} @src()\n",
         "\
 define i16 @popcnt(i16 %x) {
 entry:
@@ -140,8 +141,8 @@ while.end:
     ];
     for src in tests {
         let mut parser = Parser::new(src, "test");
-        let top_level = parser.parse_top_level().unwrap();
-        assert_eq!(top_level.to_string(), src);
+        let module = parser.parse_module().unwrap();
+        assert_eq!(module.to_string(), src);
         assert!(parser.eof());
     }
 }
@@ -194,7 +195,7 @@ Error: expected identifier, `{`, or `[`; found integer literal `3`
     ];
     for (src, diagnostic) in tests {
         let mut parser = Parser::new(src, "errs.ll");
-        let err = parser.parse_top_level().unwrap_err();
+        let err = parser.parse_module().unwrap_err();
         assert_eq!(err.to_string(), diagnostic);
     }
 }

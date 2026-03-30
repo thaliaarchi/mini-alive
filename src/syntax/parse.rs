@@ -4,7 +4,8 @@ use std::{cell::Cell, error, ffi::OsStr, fmt, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
     ast::{
-        BBlock, Cond, Func, FuncProto, GlobalName, Lit, LocalName, TopLevel, Type, TypedVal, Val,
+        BBlock, Cond, Func, FuncProto, GlobalName, Lit, LocalName, Module, TopLevel, Type,
+        TypedVal, Val,
     },
     inst::{
         Alloca, Arith, ArithOp, Call, CondBr, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
@@ -153,8 +154,17 @@ impl<'s> Parser<'s> {
         self.peek().tok == Token::Eof
     }
 
+    /// Parses a module.
+    pub fn parse_module(&mut self) -> Result<Module, Error<'s>> {
+        let mut items = Vec::new();
+        while !self.eof() {
+            items.push(self.parse_top_level()?);
+        }
+        Ok(Module { items })
+    }
+
     /// Parses a top-level item.
-    pub fn parse_top_level(&mut self) -> Result<TopLevel, Error<'s>> {
+    fn parse_top_level(&mut self) -> Result<TopLevel, Error<'s>> {
         let _ctx = self.with_ctx(Context::TopLevel);
         let ident = self.expect(Token::Ident)?;
         match ident.text {
