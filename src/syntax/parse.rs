@@ -107,7 +107,11 @@ impl<'s> Parser<'s> {
         if self.peek().tok != Token::RParen {
             loop {
                 let ty = self.parse_type()?;
-                let param_name = self.expect_local_var()?;
+                let param_name = if token_set!(Comma | RParen).contains(self.peek().tok) {
+                    None
+                } else {
+                    Some(self.expect_local_var()?)
+                };
                 params.push((ty, param_name));
                 if self.peek().tok == Token::RParen {
                     break;

@@ -49,7 +49,7 @@ func_define ::= "define" type global_var params "{" (entry_bb bb*)? "}"
 func_declare ::= "declare" type global_var params
 
 params ::= "(" (param ("," param)*)? ")"
-param ::= type local_var
+param ::= type local_var?
 args ::= "(" (arg ("," arg)*)? ")"
 arg ::= type val
 entry_bb ::= label? inst* inst_term

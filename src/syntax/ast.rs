@@ -41,7 +41,7 @@ pub struct FuncProto {
     /// The name of the function.
     pub name: GlobalVar,
     /// The function parameters.
-    pub params: Vec<(Type, LocalVar)>,
+    pub params: Vec<(Type, Option<LocalVar>)>,
 }
 
 /// A basic block: `label? inst* inst_term`.
@@ -239,7 +239,10 @@ impl FuncProto {
                 f.write_str(", ")?;
             }
             first = false;
-            write!(f, "{ty} {name}")?;
+            write!(f, "{ty}")?;
+            if let Some(name) = name {
+                write!(f, " {name}")?;
+            }
         }
         f.write_str(")")
     }

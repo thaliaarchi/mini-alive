@@ -181,6 +181,20 @@ define i16 @0(i16 %0) {
 }
 
 #[test]
+fn unnamed_params() {
+    let tests = [
+        "declare i16 @f(i16, ptr %p)\n",
+        "define i16 @f(i16, ptr %p) {\n  ret i16 0\n}\n",
+    ];
+    for src in tests {
+        let src = SourceFile::new(src.into(), "test".into());
+        let mut parser = Parser::new(&src);
+        let module = parser.parse_module().unwrap();
+        assert_eq!(module.to_string(), src.text());
+    }
+}
+
+#[test]
 fn diagnostics() {
     let tests = [
         (
