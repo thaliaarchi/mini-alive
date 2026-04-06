@@ -39,27 +39,36 @@ pub struct FuncProto {
     /// The return type.
     pub ret_ty: Type,
     /// The name of the function.
-    pub name: GlobalName,
+    pub name: GlobalVar,
     /// The function parameters.
-    pub params: Vec<(Type, LocalName)>,
+    pub params: Vec<(Type, LocalVar)>,
 }
 
 /// A basic block: `label? inst* inst_term`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BBlock {
     /// The basic block label.
-    pub label: Option<String>,
+    pub label: Option<LocalVar>,
     /// The instructions in the basic block.
     pub insts: Vec<Inst>,
 }
 
-/// A global name (`@`).
+/// A global variable (`@`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GlobalName(pub String);
+pub struct GlobalVar(pub Var);
 
-/// A local name (`%`).
+/// A local variable (`%`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LocalName(pub String);
+pub struct LocalVar(pub Var);
+
+/// A global or local variable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Var {
+    /// An integer variable.
+    Id(u32),
+    /// A named variable.
+    Name(String),
+}
 
 /// A value with an associated type.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -76,7 +85,7 @@ pub enum Val {
     /// Literal value.
     Lit(Lit),
     /// Local value.
-    Local(LocalName),
+    Local(LocalVar),
 }
 
 /// A type.
@@ -239,7 +248,7 @@ impl FuncProto {
 impl fmt::Display for BBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(label) = &self.label {
-            writeln!(f, "{label}:")?;
+            writeln!(f, "{}:", label.0)?;
         }
         for inst in &self.insts {
             writeln!(f, "  {inst}")?;
@@ -248,15 +257,24 @@ impl fmt::Display for BBlock {
     }
 }
 
-impl fmt::Display for GlobalName {
+impl fmt::Display for GlobalVar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "@{}", self.0)
     }
 }
 
-impl fmt::Display for LocalName {
+impl fmt::Display for LocalVar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "%{}", self.0)
+    }
+}
+
+impl fmt::Display for Var {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Var::Id(id) => write!(f, "{id}"),
+            Var::Name(name) => write!(f, "{name}"),
+        }
     }
 }
 

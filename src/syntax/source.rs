@@ -124,4 +124,9 @@ impl Span {
     pub fn text<'s>(&self, src: &'s SourceFile) -> &'s str {
         &src.text[self.start.offset..self.end.offset]
     }
+
+    /// Gets the byte length of the span.
+    pub fn len(&self) -> usize {
+        self.end.offset - self.start.offset
+    }
 }

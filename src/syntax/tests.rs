@@ -154,12 +154,39 @@ while.end:
 }
 
 #[test]
+fn normalized_ids() {
+    let src = "\
+define i16 @00(i16 %00) {
+01:
+  %3 = icmp eq i16 %0, 0
+  br i1 %0003, label %004, label %4
+4:
+  ret i16 %000
+}
+";
+    let expected = "\
+define i16 @0(i16 %0) {
+1:
+  %3 = icmp eq i16 %0, 0
+  br i1 %3, label %4, label %4
+
+4:
+  ret i16 %0
+}
+";
+    let src = SourceFile::new(src.into(), "test".into());
+    let mut parser = Parser::new(&src);
+    let module = parser.parse_module().unwrap();
+    assert_eq!(module.to_string(), expected);
+}
+
+#[test]
 fn diagnostics() {
     let tests = [
         (
             "define i16 src() {",
             "\
-Error: expected global name (@); found identifier `src`
+Error: expected global variable (@); found identifier `src`
  --> errs.ll:1:12-1:15
   |
 1 | define i16 src() {

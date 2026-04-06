@@ -45,12 +45,14 @@ pub enum ParseErrorKind {
     ExpectedIdent(&'static str),
     /// Invalid start of top-level item.
     TopLevel,
+    /// Invalid integer ID.
+    Id(ParseIntError),
+    /// Invalid integer literal.
+    IntLit(ParseIntError),
     /// Unknown type name.
     TypeName,
     /// Unknown literal name.
     LitName,
-    /// Invalid integer literal.
-    IntLit(ParseIntError),
     /// Instruction missing required result value.
     MissingResult,
     /// Unexpected result value on void instruction.
@@ -203,9 +205,10 @@ impl fmt::Display for ParseErrorKind {
             },
             ParseErrorKind::ExpectedIdent(ident) => write!(f, "expected `{ident}`"),
             ParseErrorKind::TopLevel => write!(f, "invalid start of top-level item"),
+            ParseErrorKind::Id(ref err) => write!(f, "invalid integer ID: {err}"),
+            ParseErrorKind::IntLit(ref err) => write!(f, "invalid integer literal: {err}"),
             ParseErrorKind::TypeName => write!(f, "unknown type name"),
             ParseErrorKind::LitName => write!(f, "unknown literal name"),
-            ParseErrorKind::IntLit(ref err) => write!(f, "invalid integer literal: {err}"),
             ParseErrorKind::MissingResult => write!(f, "instruction missing required result value"),
             ParseErrorKind::UnexpectedResult => {
                 write!(f, "unexpected result value on void instruction")

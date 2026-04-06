@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::{
-    syntax::ast::{Cond, GlobalName, LocalName, Type, TypedVal, Val},
+    syntax::ast::{Cond, GlobalVar, LocalVar, Type, TypedVal, Val},
     util::make_enum,
 };
 
@@ -85,14 +85,14 @@ make_enum! {
 pub trait InstData {
     /// Returns the SSA value name of the result, if this instruction produces a
     /// value.
-    fn result(&self) -> Option<&LocalName>;
+    fn result(&self) -> Option<&LocalVar>;
 }
 
 /// Arithmetic operation: `local_name "=" arith int_ty val "," val`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Arith {
     /// The result SSA value name.
-    pub result: LocalName,
+    pub result: LocalVar,
     /// The arithmetic operation.
     pub op: ArithOp,
     /// The type of the LHS and RHS.
@@ -107,7 +107,7 @@ pub struct Arith {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExtractValue {
     /// The result SSA value name.
-    pub result: LocalName,
+    pub result: LocalVar,
     /// The struct.
     pub agg: TypedVal,
     /// The indices of the element to access.
@@ -118,7 +118,7 @@ pub struct ExtractValue {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InsertValue {
     /// The result SSA value name.
-    pub result: LocalName,
+    pub result: LocalVar,
     /// The struct.
     pub agg: TypedVal,
     /// The value to write to the element.
@@ -131,7 +131,7 @@ pub struct InsertValue {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Alloca {
     /// The result SSA value name.
-    pub result: LocalName,
+    pub result: LocalVar,
     /// The type of the allocated elements.
     pub ty: Type,
     /// The number of elements.
@@ -142,7 +142,7 @@ pub struct Alloca {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Load {
     /// The result SSA value name.
-    pub result: LocalName,
+    pub result: LocalVar,
     /// The type to load as.
     pub ty: Type,
     /// The address to load from.
@@ -166,7 +166,7 @@ pub struct Store {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ICmp {
     /// The result SSA value name.
-    pub result: LocalName,
+    pub result: LocalVar,
     /// The Boolean conditional.
     pub cond: Cond,
     /// The type of the LHS and RHS.
@@ -181,22 +181,22 @@ pub struct ICmp {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Phi {
     /// The result SSA value name.
-    pub result: LocalName,
+    pub result: LocalVar,
     /// The type of the value.
     pub ty: Type,
     /// A value for each predecessor basic block.
-    pub sources: Vec<(Val, LocalName)>,
+    pub sources: Vec<(Val, LocalVar)>,
 }
 
 /// Function call: `local_name "=" "call" type global_name "(" (arg ("," arg)*)? ")"`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Call {
     /// The result SSA value name.
-    pub result: LocalName,
+    pub result: LocalVar,
     /// The type of the return value.
     pub ret_ty: Type,
     /// The function to call.
-    pub func: GlobalName,
+    pub func: GlobalVar,
     /// The arguments to pass.
     pub args: Vec<TypedVal>,
 }
@@ -212,7 +212,7 @@ pub struct Ret {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UncondBr {
     /// The label to jump to.
-    pub label: LocalName,
+    pub label: LocalVar,
 }
 
 /// Conditional branch: `"br" bool_ty bool_val "," "label" local_name "," "label" local_name`
@@ -221,9 +221,9 @@ pub struct CondBr {
     /// The Boolean condition.
     pub cond: TypedVal,
     /// The label to jump to if the condition is true.
-    pub label_true: LocalName,
+    pub label_true: LocalVar,
     /// The label to jump to if the condition is false.
-    pub label_false: LocalName,
+    pub label_false: LocalVar,
 }
 
 macro_rules! impl_from_for_inst(($($Ty:ident),* $(,)?) => {
@@ -249,62 +249,62 @@ impl_from_for_inst! {
 }
 
 impl InstData for Arith {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         Some(&self.result)
     }
 }
 impl InstData for ExtractValue {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         Some(&self.result)
     }
 }
 impl InstData for InsertValue {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         Some(&self.result)
     }
 }
 impl InstData for Alloca {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         Some(&self.result)
     }
 }
 impl InstData for Load {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         Some(&self.result)
     }
 }
 impl InstData for Store {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         None
     }
 }
 impl InstData for ICmp {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         Some(&self.result)
     }
 }
 impl InstData for Phi {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         Some(&self.result)
     }
 }
 impl InstData for Call {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         Some(&self.result)
     }
 }
 impl InstData for Ret {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         None
     }
 }
 impl InstData for UncondBr {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         None
     }
 }
 impl InstData for CondBr {
-    fn result(&self) -> Option<&LocalName> {
+    fn result(&self) -> Option<&LocalVar> {
         None
     }
 }

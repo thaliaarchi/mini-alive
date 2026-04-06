@@ -29,10 +29,10 @@ pub enum Token {
     Ident,
     /// Integer literal: `-?[0-9]+`
     Int,
-    /// Global name: `"@" ([a-zA-Z$._-][a-zA-Z0-9$._-]* | [0-9]+)`
-    GlobalName,
-    /// Local name: `"%" ([a-zA-Z$._-][a-zA-Z0-9$._-]* | [0-9]+)`
-    LocalName,
+    /// Global variable: `"@" ([a-zA-Z$._-][a-zA-Z0-9$._-]* | [0-9]+)`
+    GlobalVar,
+    /// Local variable: `"%" ([a-zA-Z$._-][a-zA-Z0-9$._-]* | [0-9]+)`
+    LocalVar,
     /// Label: `([a-zA-Z$._-][a-zA-Z0-9$._-]* | [0-9]+) ":"`
     Label,
     /// `(`
@@ -122,10 +122,12 @@ impl<'s> Lexer<'s> {
                     if !self.scan.bump_while(is_digit) {
                         self.scan.bump_while(is_ident_rest);
                     }
-                    if first == '@' {
-                        Token::GlobalName
+                    if self.scan.span().len() == 1 {
+                        Token::Invalid
+                    } else if first == '@' {
+                        Token::GlobalVar
                     } else {
-                        Token::LocalName
+                        Token::LocalVar
                     }
                 }
                 '(' => Token::LParen,
@@ -175,7 +177,7 @@ impl<'s> Lexer<'s> {
 impl Token {
     /// Returns whether the token can have varying text.
     pub const fn can_vary(self) -> bool {
-        token_set!(Ident | Int | GlobalName | LocalName | Label | Invalid).contains(self)
+        token_set!(Ident | Int | GlobalVar | LocalVar | Label | Invalid).contains(self)
     }
 }
 
@@ -184,8 +186,8 @@ impl fmt::Display for Token {
         f.write_str(match self {
             Token::Ident => "identifier",
             Token::Int => "integer literal",
-            Token::GlobalName => "global name (@)",
-            Token::LocalName => "local name (%)",
+            Token::GlobalVar => "global variable (@)",
+            Token::LocalVar => "local variable (%)",
             Token::Label => "label",
             Token::LParen => "`(`",
             Token::RParen => "`)`",

@@ -4,8 +4,8 @@ use std::{cell::Cell, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
     ast::{
-        BBlock, Cond, Func, FuncProto, GlobalName, Lit, LocalName, Module, TopLevel, Type,
-        TypedVal, Val,
+        BBlock, Cond, Func, FuncProto, GlobalVar, Lit, LocalVar, Module, TopLevel, Type, TypedVal,
+        Val, Var,
     },
     error::{Error, ParseContext as Context, ParseError, ParseErrorKind as ErrorKind},
     inst::{
@@ -100,14 +100,14 @@ impl<'s> Parser<'s> {
     /// Parses a function prototype.
     fn parse_func_proto(&mut self) -> Result<FuncProto, Error<'s>> {
         let ret_ty = self.parse_type()?;
-        let name = self.expect_global_name()?;
+        let name = self.expect_global_var()?;
 
         let mut params = Vec::new();
         self.expect(Token::LParen)?;
         if self.peek().tok != Token::RParen {
             loop {
                 let ty = self.parse_type()?;
-                let param_name = self.expect_local_name()?;
+                let param_name = self.expect_local_var()?;
                 params.push((ty, param_name));
                 if self.peek().tok == Token::RParen {
                     break;
@@ -129,7 +129,8 @@ impl<'s> Parser<'s> {
         let _ctx = self.with_ctx(Context::BBlock);
         let label = self
             .next_if(Token::Label)
-            .map(|label| label.text[..label.text.len() - 1].to_owned());
+            .map(|label| self.parse_label(label))
+            .transpose()?;
         let mut insts = Vec::new();
         while !token_set!(Label | RBrace).contains(self.peek().tok) {
             insts.push(self.parse_inst()?);
@@ -140,7 +141,7 @@ impl<'s> Parser<'s> {
     /// Parses an instruction.
     pub(super) fn parse_inst(&mut self) -> Result<Inst, Error<'s>> {
         let _ctx = self.with_ctx(Context::Inst);
-        let result = self.next_if(Token::LocalName);
+        let result = self.next_if(Token::LocalVar);
         if result.is_some() {
             let _ctx = self.with_ctx(Context::InstResult);
             self.expect(Token::Eq)?;
@@ -253,7 +254,7 @@ impl<'s> Parser<'s> {
                     self.expect(Token::LBracket)?;
                     let val = self.parse_val()?;
                     self.expect(Token::Comma)?;
-                    let label = self.expect_local_name()?;
+                    let label = self.expect_local_var()?;
                     self.expect(Token::RBracket)?;
                     sources.push((val, label));
                     if self.next_if(Token::Comma).is_none() {
@@ -270,7 +271,7 @@ impl<'s> Parser<'s> {
                 let _ctx = self.with_ctx(Context::CallInst);
                 let result = self.require_result(result, op)?;
                 let ret_ty = self.parse_type()?;
-                let func = self.expect_global_name()?;
+                let func = self.expect_global_var()?;
                 self.expect(Token::LParen)?;
                 let mut args = Vec::new();
                 if self.peek().tok != Token::RParen {
@@ -302,16 +303,16 @@ impl<'s> Parser<'s> {
                 let peek = self.peek();
                 if peek.tok == Token::Ident && peek.text == "label" {
                     self.bump();
-                    let label = self.expect_local_name()?;
+                    let label = self.expect_local_var()?;
                     Ok(Inst::from(UncondBr { label }))
                 } else {
                     let cond = self.parse_typed_val()?;
                     self.expect(Token::Comma)?;
                     self.expect_ident("label")?;
-                    let label_true = self.expect_local_name()?;
+                    let label_true = self.expect_local_var()?;
                     self.expect(Token::Comma)?;
                     self.expect_ident("label")?;
-                    let label_false = self.expect_local_name()?;
+                    let label_false = self.expect_local_var()?;
                     Ok(Inst::from(CondBr {
                         cond,
                         label_true,
@@ -333,8 +334,8 @@ impl<'s> Parser<'s> {
     /// Parses a value.
     fn parse_val(&mut self) -> Result<Val, Error<'s>> {
         let _ctx = self.with_ctx(Context::Val);
-        if self.peek().tok == Token::LocalName {
-            Ok(Val::Local(self.expect_local_name()?))
+        if self.peek().tok == Token::LocalVar {
+            Ok(Val::Local(self.expect_local_var()?))
         } else {
             Ok(Val::Lit(self.parse_lit()?))
         }
@@ -491,14 +492,29 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn expect_global_name(&mut self) -> Result<GlobalName, Error<'s>> {
-        let lex = self.expect(Token::GlobalName)?;
-        Ok(GlobalName(lex.text[1..].to_owned()))
+    fn expect_global_var(&mut self) -> Result<GlobalVar, Error<'s>> {
+        let lex = self.expect(Token::GlobalVar)?;
+        Ok(GlobalVar(self.parse_var(&lex.text[1..], lex)?))
     }
 
-    fn expect_local_name(&mut self) -> Result<LocalName, Error<'s>> {
-        let lex = self.expect(Token::LocalName)?;
-        Ok(LocalName(lex.text[1..].to_owned()))
+    fn expect_local_var(&mut self) -> Result<LocalVar, Error<'s>> {
+        let lex = self.expect(Token::LocalVar)?;
+        Ok(LocalVar(self.parse_var(&lex.text[1..], lex)?))
+    }
+
+    fn parse_var(&self, text: &'s str, lex: Lexeme<'s>) -> Result<Var, Error<'s>> {
+        if text.as_bytes()[0].is_ascii_digit() {
+            text.parse()
+                .map(Var::Id)
+                .map_err(|err| self.err(lex, ErrorKind::Id(err)))
+        } else {
+            Ok(Var::Name(text.to_owned()))
+        }
+    }
+
+    fn parse_label(&self, lex: Lexeme<'s>) -> Result<LocalVar, Error<'s>> {
+        self.parse_var(&lex.text[..lex.text.len() - 1], lex)
+            .map(LocalVar)
     }
 
     fn expect_int<T: FromStr<Err = ParseIntError>>(&mut self) -> Result<T, Error<'s>> {
@@ -516,11 +532,11 @@ impl<'s> Parser<'s> {
         &self,
         result: Option<Lexeme<'s>>,
         op: Lexeme<'s>,
-    ) -> Result<LocalName, Error<'s>> {
+    ) -> Result<LocalVar, Error<'s>> {
         match result {
             Some(result) => {
-                debug_assert_eq!(result.tok, Token::LocalName);
-                Ok(LocalName(result.text[1..].to_owned()))
+                debug_assert_eq!(result.tok, Token::LocalVar);
+                Ok(LocalVar(self.parse_var(&result.text[1..], result)?))
             }
             None => Err(self.err(op, ErrorKind::MissingResult)),
         }
