@@ -104,17 +104,11 @@ pub enum Context {
 
 impl fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error: {}; found {}", self.kind, self.lex.tok)?;
-        if self.lex.tok.can_vary() {
-            write!(f, " `{}`", self.lex.text)?;
-        }
-        writeln!(f)?;
+        writeln!(f, "Error: {}; found {}", self.kind, self.lex)?;
         let span = &self.lex.span;
         let start = span.start_position(self.src);
         let end = span.end_position(self.src);
-        debug_assert_eq!(start.line, end.line);
-        let line_number = start.line;
-        let width = line_number.ilog10() as usize + 1;
+        let width = end.line.ilog10() as usize + 1;
         write!(
             f,
             "{:>n$}--> {}:{}:{}",
@@ -122,23 +116,36 @@ impl fmt::Display for Error<'_> {
             self.src.filename().to_string_lossy(),
             start.line,
             start.column,
-            n = width
+            n = width,
         )?;
         if end.column != start.column + 1 {
             write!(f, "-{}:{}", end.line, end.column)?;
         }
         writeln!(f)?;
         writeln!(f, "{:>n$} |", "", n = width)?;
-        writeln!(f, "{line_number} | {}", self.src.line_text(line_number))?;
-        writeln!(
-            f,
-            "{:>n$} | {:>start$}{}",
-            "",
-            "",
-            "^".repeat((end.column - start.column).max(1)),
-            n = width,
-            start = start.column - 1,
-        )?;
+        for line_number in start.line..=end.line {
+            let line = self.src.line_text(line_number);
+            writeln!(f, "{line_number} | {line}")?;
+            let highlight_start = if line_number == start.line {
+                start.column - 1
+            } else {
+                0
+            };
+            let highlight_end = if line_number == end.line {
+                end.column - 1
+            } else {
+                line.chars().count()
+            };
+            let highlight = "^".repeat((highlight_end - highlight_start).max(1));
+            writeln!(
+                f,
+                "{:>n$} | {:>highlight_start$}{highlight}",
+                "",
+                "",
+                n = width,
+                highlight_start = highlight_start,
+            )?;
+        }
         writeln!(f, "{:>n$} |", "", n = width)?;
         writeln!(f, "{:>n$} = context: parsing {}", "", self.ctx, n = width)
     }

@@ -188,7 +188,8 @@ define i16 @src() {
   %x = extractvalue {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, 3], {ptr, {}} {ptr null, {} {}}}, 0, 1
   ret i16 %x
 }
-","\
+",
+            "\
 Error: expected identifier, `{`, or `[`; found integer literal `3`
  --> errs.ll:4:70
   |
@@ -196,6 +197,27 @@ Error: expected identifier, `{`, or `[`; found integer literal `3`
   |                                                                      ^
   |
   = context: parsing a type
+"
+        ),
+        (
+            "\
+define i16 @src() {
+  /* unterminated
+  ret i16 0
+}
+",
+            "\
+Error: expected identifier; found invalid token `/* unterminated\\n  ret i16 0\\n}\\n`
+ --> errs.ll:2:3-4:3
+  |
+2 |   /* unterminated
+  |   ^^^^^^^^^^^^^^^
+3 |   ret i16 0
+  | ^^^^^^^^^^^
+4 | }
+  | ^^
+  |
+  = context: parsing the opcode of an instruction
 "
         )
     ];

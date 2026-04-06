@@ -172,6 +172,16 @@ impl<'s> Lexer<'s> {
     }
 }
 
+impl fmt::Display for Lexeme<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.tok)?;
+        if self.tok.can_vary() {
+            write!(f, " `{}`", self.text.escape_debug())?;
+        }
+        Ok(())
+    }
+}
+
 impl Token {
     /// Returns whether the token can have varying text.
     pub const fn can_vary(self) -> bool {
