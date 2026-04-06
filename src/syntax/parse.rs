@@ -1,12 +1,13 @@
 //! Parsing Mini-Alive source.
 
-use std::{cell::Cell, error, ffi::OsStr, fmt, num::ParseIntError, str::FromStr};
+use std::{cell::Cell, ffi::OsStr, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
     ast::{
         BBlock, Cond, Func, FuncProto, GlobalName, Lit, LocalName, Module, TopLevel, Type,
         TypedVal, Val,
     },
+    error::{Context, Error, ErrorKind},
     inst::{
         Alloca, Arith, ArithOp, Call, CondBr, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
         Ret, Store, UncondBr,
@@ -23,103 +24,6 @@ pub struct Parser<'s> {
     peek: Option<Lexeme<'s>>,
     ctx: Cell<Context>,
     filename: String,
-}
-
-/// A parse error.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Error<'s> {
-    /// The lexeme which caused the error.
-    pub lex: Lexeme<'s>,
-    /// The kind of error.
-    pub kind: ErrorKind,
-    /// The context in the grammar.
-    pub ctx: Context,
-    /// The filename of the source.
-    pub filename: String,
-    /// The line in the source text.
-    pub line: &'s str,
-}
-
-/// A kind of parse error.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ErrorKind {
-    /// Expected one of these tokens.
-    ExpectedToken(TokenSet),
-    /// Expected this identifier.
-    ExpectedIdent(&'static str),
-    /// Invalid start of top-level item.
-    TopLevel,
-    /// Unknown type name.
-    TypeName,
-    /// Unknown literal name.
-    LitName,
-    /// Invalid integer literal.
-    IntLit(ParseIntError),
-    /// Instruction missing required result value.
-    MissingResult,
-    /// Unexpected result value on void instruction.
-    UnexpectedResult,
-    /// Unknown instruction.
-    UnsupportedInst,
-    /// Invalid Boolean conditional.
-    Cond,
-}
-
-/// Context in the grammar for a parse error.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Context {
-    /// A top-level item.
-    TopLevel,
-    /// A function.
-    Func,
-    /// A function declaration.
-    FuncDeclare,
-    /// A basic block.
-    BBlock,
-    /// An instruction.
-    Inst,
-    /// The result of an instruction.
-    InstResult,
-    /// The opcode of an instruction.
-    InstOp,
-    /// An arithmetic instruction.
-    ArithInst,
-    /// An `extractvalue` instruction.
-    ExtractValueInst,
-    /// An `insertvalue` instruction.
-    InsertValueInst,
-    /// An `alloca` instruction.
-    AllocaInst,
-    /// A `load` instruction.
-    LoadInst,
-    /// A `store` instruction.
-    StoreInst,
-    /// An `icmp` instruction.
-    ICmpInst,
-    /// A `phi` instruction.
-    PhiInst,
-    /// A `call` instruction.
-    CallInst,
-    /// A `ret` instruction.
-    RetInst,
-    /// A `br` instruction.
-    BrInst,
-    /// A Boolean conditional.
-    Cond,
-    /// A value.
-    Val,
-    /// A type.
-    Type,
-    /// A struct type.
-    StructType,
-    /// An array type.
-    ArrayType,
-    /// A literal.
-    Lit,
-    /// A struct literal.
-    StructLit,
-    /// An array literal.
-    ArrayLit,
 }
 
 /// A drop guard which restores the original context.
@@ -633,11 +537,11 @@ impl<'s> Parser<'s> {
 
     fn err(&self, lex: Lexeme<'s>, kind: ErrorKind) -> Error<'s> {
         let src = self.lexer.src().as_bytes();
-        let mut line_start = lex.span.start().offset();
+        let mut line_start = lex.span.start.offset;
         while line_start != 0 && src[line_start - 1] != b'\n' {
             line_start -= 1;
         }
-        let mut line_end = lex.span.end().offset();
+        let mut line_end = lex.span.end.offset;
         while line_end < src.len() && src[line_end] != b'\n' {
             line_end += 1;
         }
@@ -669,104 +573,3 @@ impl Drop for ContextGuard {
         unsafe { *self.ctx = self.old_ctx };
     }
 }
-
-impl fmt::Display for Error<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error: {}; found {}", self.kind, self.lex.tok)?;
-        if self.lex.tok.can_vary() {
-            write!(f, " `{}`", self.lex.text)?;
-        }
-        writeln!(f)?;
-        let span = &self.lex.span;
-        debug_assert_eq!(span.start().line(), span.end().line());
-        let line_number = span.start().line();
-        let width = line_number.ilog10() as usize + 1;
-        writeln!(f, "{:>n$}--> {}:{span}", "", self.filename, n = width)?;
-        writeln!(f, "{:>n$} |", "", n = width)?;
-        writeln!(f, "{line_number} | {}", self.line)?;
-        write!(
-            f,
-            "{:>n$} | {:>start$}{}",
-            "",
-            "",
-            "^".repeat((span.end().column() - span.start().column()).max(1)),
-            n = width,
-            start = span.start().column() - 1,
-        )?;
-        writeln!(f)?;
-        writeln!(f, "{:>n$} |", "", n = width)?;
-        writeln!(f, "{:>n$} = context: parsing {}", "", self.ctx, n = width)
-    }
-}
-
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            ErrorKind::ExpectedToken(mut tokens) => match tokens.len() {
-                0 => write!(f, "unexpected token"),
-                1 => write!(f, "expected {}", tokens.next().unwrap()),
-                2 => write!(
-                    f,
-                    "expected {} or {}",
-                    tokens.next().unwrap(),
-                    tokens.next().unwrap(),
-                ),
-                _ => {
-                    write!(f, "expected")?;
-                    while let Some(tok) = tokens.next() {
-                        if tokens.is_empty() {
-                            write!(f, " or {tok}")?;
-                        } else {
-                            write!(f, " {tok},")?;
-                        }
-                    }
-                    Ok(())
-                }
-            },
-            ErrorKind::ExpectedIdent(ident) => write!(f, "expected `{ident}`"),
-            ErrorKind::TopLevel => write!(f, "invalid start of top-level item"),
-            ErrorKind::TypeName => write!(f, "unknown type name"),
-            ErrorKind::LitName => write!(f, "unknown literal name"),
-            ErrorKind::IntLit(ref err) => write!(f, "invalid integer literal: {err}"),
-            ErrorKind::MissingResult => write!(f, "instruction missing required result value"),
-            ErrorKind::UnexpectedResult => write!(f, "unexpected result value on void instruction"),
-            ErrorKind::UnsupportedInst => write!(f, "unsupported instruction"),
-            ErrorKind::Cond => write!(f, "invalid Boolean conditional"),
-        }
-    }
-}
-
-impl fmt::Display for Context {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Context::TopLevel => "a top-level item",
-            Context::Func => "a function",
-            Context::FuncDeclare => "a function declaration",
-            Context::BBlock => "a basic block",
-            Context::Inst => "an instruction",
-            Context::InstResult => "the result of an instruction",
-            Context::InstOp => "the opcode of an instruction",
-            Context::ArithInst => "an arithmetic instruction",
-            Context::ExtractValueInst => "an `extractvalue` instruction",
-            Context::InsertValueInst => "an `insertvalue` instruction",
-            Context::AllocaInst => "an `alloca` instruction",
-            Context::LoadInst => "a `load` instruction",
-            Context::StoreInst => "a `store` instruction",
-            Context::ICmpInst => "an `icmp` instruction",
-            Context::PhiInst => "a `phi` instruction",
-            Context::CallInst => "a `call` instruction",
-            Context::RetInst => "a `ret` instruction",
-            Context::BrInst => "a `br` instruction",
-            Context::Cond => "a Boolean conditional",
-            Context::Val => "a value",
-            Context::Type => "a type",
-            Context::StructType => "a struct type",
-            Context::ArrayType => "an array type",
-            Context::Lit => "a literal",
-            Context::StructLit => "a struct literal",
-            Context::ArrayLit => "an array literal",
-        })
-    }
-}
-
-impl error::Error for Error<'_> {}

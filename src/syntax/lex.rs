@@ -2,7 +2,7 @@
 
 use std::{fmt, mem};
 
-use crate::syntax::scan::{Scanner, Span};
+use crate::syntax::{scan::Scanner, source::Span};
 
 /// A lexical unit of text.
 #[derive(Clone, Debug, PartialEq, Eq)]
