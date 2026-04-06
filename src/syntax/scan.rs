@@ -2,13 +2,13 @@
 
 use std::str::Chars;
 
-use crate::syntax::source::{Pos, Span};
+use crate::syntax::source::{Pos, SourceFile, Span};
 
 /// A scanner for reading tokens from UTF-8 text.
 #[derive(Clone, Debug)]
 pub struct Scanner<'s> {
-    /// The full source text.
-    src: &'s str,
+    /// The source file being scanned.
+    src: &'s SourceFile,
     /// Iterator at the next char.
     chars: Chars<'s>,
     /// Start position of the current token.
@@ -19,30 +19,26 @@ pub struct Scanner<'s> {
 
 impl<'s> Scanner<'s> {
     /// Constructs a new scanner for the source text.
-    pub fn new(src: &'s str) -> Self {
-        let pos = Pos {
-            offset: 0,
-            line: 1,
-            column: 1,
-        };
+    pub fn new(src: &'s SourceFile) -> Self {
+        let pos = Pos { offset: 0 };
         Scanner {
             src,
-            chars: src.chars(),
+            chars: src.text().chars(),
             start: pos,
             end: pos,
         }
     }
 
-    /// Gets the full source text.
+    /// Gets the source file.
     #[inline]
-    pub fn src(&self) -> &'s str {
+    pub fn src(&self) -> &'s SourceFile {
         self.src
     }
 
     /// Gets the text of the current token.
     #[inline]
     pub fn text(&self) -> &'s str {
-        &self.src[self.start.offset..self.end.offset]
+        &self.src.text()[self.start.offset..self.end.offset]
     }
 
     /// Gets the source position range of the current token.
@@ -69,7 +65,7 @@ impl<'s> Scanner<'s> {
     /// Consumes and returns the next character.
     pub fn next(&mut self) -> Option<char> {
         let ch = self.chars.next()?;
-        self.bump_pos(ch);
+        self.end.offset = self.src.text().len() - self.chars.as_str().len();
         Some(ch)
     }
 
@@ -97,16 +93,5 @@ impl<'s> Scanner<'s> {
             moved = true;
         }
         moved
-    }
-
-    /// Moves the end position by the width of the character.
-    #[inline(always)]
-    fn bump_pos(&mut self, ch: char) {
-        self.end.column = self.end.column.saturating_add(1);
-        if ch == '\n' {
-            self.end.line = self.end.line.saturating_add(1);
-            self.end.column = 1;
-        }
-        self.end.offset = self.src.len() - self.chars.as_str().len();
     }
 }

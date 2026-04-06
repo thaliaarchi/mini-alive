@@ -1,6 +1,6 @@
 //! Parsing Mini-Alive source.
 
-use std::{cell::Cell, ffi::OsStr, num::ParseIntError, str::FromStr};
+use std::{cell::Cell, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
     ast::{
@@ -13,6 +13,7 @@ use crate::syntax::{
         Ret, Store, UncondBr,
     },
     lex::{Lexeme, Lexer, Token, TokenSet, token_set},
+    source::SourceFile,
 };
 
 // TODO:
@@ -23,7 +24,6 @@ pub struct Parser<'s> {
     lexer: Lexer<'s>,
     peek: Option<Lexeme<'s>>,
     ctx: Cell<Context>,
-    filename: String,
 }
 
 /// A drop guard which restores the original context.
@@ -38,18 +38,16 @@ struct ContextGuard {
 
 impl<'s> Parser<'s> {
     /// Constructs a parser for Mini-Alive source.
-    pub fn new<T: AsRef<OsStr>>(src: &'s str, filename: T) -> Self {
-        Parser::from_lexer(Lexer::new(src), filename.as_ref())
+    pub fn new(src: &'s SourceFile) -> Self {
+        Parser::from_lexer(Lexer::new(src))
     }
 
     /// Constructs a parser from a lexer.
-    pub fn from_lexer(lexer: Lexer<'s>, filename: &OsStr) -> Self {
-        let filename = filename.to_string_lossy().into_owned();
+    pub fn from_lexer(lexer: Lexer<'s>) -> Self {
         Parser {
             lexer,
             peek: None,
             ctx: Cell::new(Context::TopLevel),
-            filename,
         }
     }
 
@@ -536,24 +534,11 @@ impl<'s> Parser<'s> {
     }
 
     fn err(&self, lex: Lexeme<'s>, kind: ErrorKind) -> Error<'s> {
-        let src = self.lexer.src().as_bytes();
-        let mut line_start = lex.span.start.offset;
-        while line_start != 0 && src[line_start - 1] != b'\n' {
-            line_start -= 1;
-        }
-        let mut line_end = lex.span.end.offset;
-        while line_end < src.len() && src[line_end] != b'\n' {
-            line_end += 1;
-        }
-        if line_end != 0 && src[line_end - 1] == b'\r' {
-            line_end -= 1;
-        }
         Error {
             lex,
             kind,
             ctx: self.ctx.get(),
-            filename: self.filename.clone(),
-            line: &self.lexer.src()[line_start..line_end],
+            src: self.lexer.src(),
         }
     }
 

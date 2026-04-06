@@ -1,64 +1,122 @@
 //! Source positions.
 
-use std::{cmp::Ordering, fmt};
+use std::ffi::{OsStr, OsString};
+
+/// The text and metadata for a single source file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceFile {
+    /// The source filename.
+    filename: OsString,
+    /// The full source text.
+    text: String,
+    /// The byte offsets of the start of each line.
+    line_offsets: Vec<usize>,
+}
 
 /// A source position range.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Span {
-    /// Start position.
+    /// Start position, inclusive.
     pub start: Pos,
-    /// End position.
+    /// End position, exclusive.
     pub end: Pos,
 }
 
 /// A source position.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct Pos {
     /// Byte offset, starting at 0.
     pub offset: usize,
+}
+
+/// The line/column coordinates of a source position.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LineCol {
     /// Line number, starting at 1.
     pub line: usize,
     /// Column number, starting at 1.
     pub column: usize,
 }
 
-impl PartialOrd for Pos {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let ord = self.offset.cmp(&other.offset);
-        #[cfg(debug_assertions)]
-        {
-            let consistent = match ord {
-                Ordering::Less => {
-                    self.line < other.line || self.line == other.line && self.column < other.column
-                }
-                Ordering::Equal => self.line == other.line && self.column == other.column,
-                Ordering::Greater => {
-                    self.line > other.line || self.line == other.line && self.column > other.column
-                }
-            };
-            if !consistent {
-                panic!("compared positions from different sources: {self} and {other}");
+impl SourceFile {
+    /// Constructs a source file from its text.
+    pub fn new(text: String, filename: OsString) -> Self {
+        let mut line_offsets = Vec::new();
+        line_offsets.push(0);
+        for (offset, ch) in text.char_indices() {
+            if ch == '\n' {
+                line_offsets.push(offset + 1);
             }
         }
-        Some(ord)
-    }
-}
-
-impl fmt::Display for Span {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.end.offset == self.start.offset + 1
-            && self.start.line == self.end.line
-            && self.end.column == self.start.column + 1
-        {
-            write!(f, "{}", self.start)
-        } else {
-            write!(f, "{}-{}", self.start, self.end)
+        SourceFile {
+            filename,
+            text,
+            line_offsets,
         }
     }
+
+    /// Gets the source filename.
+    pub fn filename(&self) -> &OsStr {
+        &self.filename
+    }
+
+    /// Gets the full source text.
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Gets the text of a source line, excluding the trailing line ending.
+    pub fn line_text(&self, line: usize) -> &str {
+        let start = self.line_offsets[line - 1];
+        let end = self
+            .line_offsets
+            .get(line)
+            .copied()
+            .unwrap_or(self.text.len());
+        let mut text = &self.text[start..end];
+        if let Some(rest) = text.strip_suffix('\n') {
+            text = rest;
+        }
+        if let Some(rest) = text.strip_suffix('\r') {
+            text = rest;
+        }
+        text
+    }
+
+    /// Resolves a byte offset to line/column coordinates.
+    pub fn position(&self, offset: usize) -> LineCol {
+        let line = self.line_index(offset);
+        let line_start = self.line_offsets[line];
+        let column = self.text[line_start..offset].chars().count();
+        LineCol {
+            line: line + 1,
+            column: column + 1,
+        }
+    }
+
+    fn line_index(&self, offset: usize) -> usize {
+        self.line_offsets.partition_point(|&start| start <= offset) - 1
+    }
 }
 
-impl fmt::Display for Pos {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
+impl Span {
+    /// Resolves the start position to line/column coordinates.
+    pub fn start_position(&self, src: &SourceFile) -> LineCol {
+        src.position(self.start.offset)
+    }
+
+    /// Resolves the end position to line/column coordinates.
+    pub fn end_position(&self, src: &SourceFile) -> LineCol {
+        if self.end.offset != 0 && src.text().as_bytes()[self.end.offset - 1] == b'\n' {
+            let line = src.line_index(self.end.offset) - 1;
+            let line_start = src.line_offsets[line];
+            let column = src.text[line_start..self.end.offset].chars().count();
+            LineCol {
+                line: line + 1,
+                column: column + 1,
+            }
+        } else {
+            src.position(self.end.offset)
+        }
     }
 }

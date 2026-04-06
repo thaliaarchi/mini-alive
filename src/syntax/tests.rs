@@ -1,6 +1,7 @@
 use crate::syntax::{
     ast::{Lit, Type},
     parse::Parser,
+    source::SourceFile,
 };
 
 #[test]
@@ -52,8 +53,10 @@ fn types_and_literals() {
         assert_eq!(lit.to_string(), lit_str, "{lit:?}.to_string()");
         assert_eq!(lit.ty().as_ref(), Some(&ty));
         assert!(lit.has_type(&ty));
-        assert_eq!(Parser::new(ty_str, "test").parse_type(), Ok(ty));
-        assert_eq!(Parser::new(lit_str, "test").parse_lit(), Ok(lit));
+        let ty_src = SourceFile::new(ty_str.into(), "test".into());
+        assert_eq!(Parser::new(&ty_src).parse_type(), Ok(ty));
+        let lit_src = SourceFile::new(lit_str.into(), "test".into());
+        assert_eq!(Parser::new(&lit_src).parse_lit(), Ok(lit));
     }
 }
 
@@ -73,7 +76,8 @@ fn empty_array() {
 #[test]
 fn bools() {
     assert_eq!(Type::Bool.to_string(), "i1");
-    assert_eq!(Parser::new("i1", "test").parse_type(), Ok(Type::Bool));
+    let src = SourceFile::new("i1".into(), "test".into());
+    assert_eq!(Parser::new(&src).parse_type(), Ok(Type::Bool));
     let tests = [(Lit::Bool(false), "0"), (Lit::Bool(true), "1")];
     for (lit, lit_str) in tests {
         assert_eq!(lit.to_string(), lit_str, "{lit:?}.to_string()");
@@ -91,7 +95,8 @@ ret { i16, i16 } { i16 4, i16 2 }
 ret {[3 x i16], {ptr, {}}}
     {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}
 ";
-    let mut parser = Parser::new(src, "test");
+    let src = SourceFile::new(src.into(), "test".into());
+    let mut parser = Parser::new(&src);
     let mut insts = Vec::new();
     while !parser.eof() {
         insts.push(parser.parse_inst().unwrap().to_string());
@@ -140,9 +145,10 @@ while.end:
         "declare i16 @popcnt(i16 %x)\n",
     ];
     for src in tests {
-        let mut parser = Parser::new(src, "test");
+        let src = SourceFile::new(src.into(), "test".into());
+        let mut parser = Parser::new(&src);
         let module = parser.parse_module().unwrap();
-        assert_eq!(module.to_string(), src);
+        assert_eq!(module.to_string(), src.text());
         assert!(parser.eof());
     }
 }
@@ -194,7 +200,8 @@ Error: expected identifier, `{`, or `[`; found integer literal `3`
         )
     ];
     for (src, diagnostic) in tests {
-        let mut parser = Parser::new(src, "errs.ll");
+        let src = SourceFile::new(src.into(), "errs.ll".into());
+        let mut parser = Parser::new(&src);
         let err = parser.parse_module().unwrap_err();
         assert_eq!(err.to_string(), diagnostic);
     }

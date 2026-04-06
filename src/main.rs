@@ -1,6 +1,6 @@
 use std::{env, fs, process::exit};
 
-use mini_alive::syntax::parse::Parser;
+use mini_alive::syntax::{parse::Parser, source::SourceFile};
 
 fn main() {
     let mut args = env::args_os();
@@ -9,14 +9,15 @@ fn main() {
         exit(2)
     }
     let filename = args.nth(1).unwrap();
-    let src = match fs::read_to_string(&filename) {
-        Ok(src) => src,
+    let text = match fs::read_to_string(&filename) {
+        Ok(text) => text,
         Err(err) => {
             eprintln!("{}: {err}", filename.display());
             exit(1);
         }
     };
-    let mut parser = Parser::new(&src, &filename);
+    let src = SourceFile::new(text, filename);
+    let mut parser = Parser::new(&src);
     let module = match parser.parse_module() {
         Ok(module) => module,
         Err(err) => {

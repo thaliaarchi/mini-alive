@@ -2,7 +2,10 @@
 
 use std::{error, fmt, num::ParseIntError};
 
-use crate::syntax::lex::{Lexeme, TokenSet};
+use crate::syntax::{
+    lex::{Lexeme, TokenSet},
+    source::SourceFile,
+};
 
 /// A parse error.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -13,10 +16,8 @@ pub struct Error<'s> {
     pub kind: ErrorKind,
     /// The context in the grammar.
     pub ctx: Context,
-    /// The filename of the source.
-    pub filename: String,
-    /// The line in the source text.
-    pub line: &'s str,
+    /// The source file containing the error.
+    pub src: &'s SourceFile,
 }
 
 /// A kind of parse error.
@@ -109,22 +110,35 @@ impl fmt::Display for Error<'_> {
         }
         writeln!(f)?;
         let span = &self.lex.span;
-        debug_assert_eq!(span.start.line, span.end.line);
-        let line_number = span.start.line;
+        let start = span.start_position(self.src);
+        let end = span.end_position(self.src);
+        debug_assert_eq!(start.line, end.line);
+        let line_number = start.line;
         let width = line_number.ilog10() as usize + 1;
-        writeln!(f, "{:>n$}--> {}:{span}", "", self.filename, n = width)?;
-        writeln!(f, "{:>n$} |", "", n = width)?;
-        writeln!(f, "{line_number} | {}", self.line)?;
         write!(
+            f,
+            "{:>n$}--> {}:{}:{}",
+            "",
+            self.src.filename().to_string_lossy(),
+            start.line,
+            start.column,
+            n = width
+        )?;
+        if end.column != start.column + 1 {
+            write!(f, "-{}:{}", end.line, end.column)?;
+        }
+        writeln!(f)?;
+        writeln!(f, "{:>n$} |", "", n = width)?;
+        writeln!(f, "{line_number} | {}", self.src.line_text(line_number))?;
+        writeln!(
             f,
             "{:>n$} | {:>start$}{}",
             "",
             "",
-            "^".repeat((span.end.column - span.start.column).max(1)),
+            "^".repeat((end.column - start.column).max(1)),
             n = width,
-            start = span.start.column - 1,
+            start = start.column - 1,
         )?;
-        writeln!(f)?;
         writeln!(f, "{:>n$} |", "", n = width)?;
         writeln!(f, "{:>n$} = context: parsing {}", "", self.ctx, n = width)
     }

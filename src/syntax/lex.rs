@@ -2,7 +2,10 @@
 
 use std::{fmt, mem};
 
-use crate::syntax::{scan::Scanner, source::Span};
+use crate::syntax::{
+    scan::Scanner,
+    source::{SourceFile, Span},
+};
 
 /// A lexical unit of text.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,7 +69,7 @@ pub struct Lexer<'s> {
 
 impl<'s> Lexer<'s> {
     /// Constructs a lexer for Mini-Alive source.
-    pub fn new(src: &'s str) -> Lexer<'s> {
+    pub fn new(src: &'s SourceFile) -> Lexer<'s> {
         Lexer {
             scan: Scanner::new(src),
         }
@@ -163,8 +166,8 @@ impl<'s> Lexer<'s> {
         }
     }
 
-    /// Gets the full source text.
-    pub fn src(&self) -> &'s str {
+    /// Gets the source file.
+    pub fn src(&self) -> &'s SourceFile {
         self.scan.src()
     }
 }
