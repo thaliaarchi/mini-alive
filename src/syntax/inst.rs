@@ -339,7 +339,6 @@ impl fmt::Display for Arith {
     }
 }
 
-/// Struct field access: `local_name "=" "extractvalue" struct_ty val "," int_lit ("," int_lit)*`
 impl fmt::Display for ExtractValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} = extractvalue {}", self.result, self.agg)?;
@@ -350,7 +349,6 @@ impl fmt::Display for ExtractValue {
     }
 }
 
-/// Struct field write: `local_name "=" "insertvalue" struct_ty val "," type val "," int_lit ("," int_lit)*`
 impl fmt::Display for InsertValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -365,7 +363,6 @@ impl fmt::Display for InsertValue {
     }
 }
 
-/// Stack allocation: `local_name "=" "alloca" type ("," int_ty val)?`
 impl fmt::Display for Alloca {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} = alloca {}", self.result, self.ty)?;
@@ -376,21 +373,18 @@ impl fmt::Display for Alloca {
     }
 }
 
-/// Memory load: `local_name "=" "load" type "," ptr_ty val`
 impl fmt::Display for Load {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} = load {}, {}", self.result, self.ty, self.ptr)
     }
 }
 
-/// Memory store: `"store" type val "," ptr_ty val`
 impl fmt::Display for Store {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "store {}, {}", self.val, self.ptr)
     }
 }
 
-/// Integer comparison: `local_name "=" "icmp" cond type val "," val`
 impl fmt::Display for ICmp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -401,7 +395,6 @@ impl fmt::Display for ICmp {
     }
 }
 
-/// Phi: `local_name "=" "phi" type "[" val "," local_name "]" ("," "[" val "," local_name "]")*`
 impl fmt::Display for Phi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} = phi {}", self.result, self.ty)?;
@@ -417,7 +410,6 @@ impl fmt::Display for Phi {
     }
 }
 
-/// Function call: `local_name "=" "call" type global_name "(" (arg ("," arg)*)? ")"`
 impl fmt::Display for Call {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} = call {} {}(", self.result, self.ret_ty, self.func)?;
@@ -433,21 +425,18 @@ impl fmt::Display for Call {
     }
 }
 
-/// Function return: `"ret" type val`
 impl fmt::Display for Ret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ret {}", self.val)
     }
 }
 
-/// Unconditional branch: `"br" "label" local_name`
 impl fmt::Display for UncondBr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "br label {}", self.label)
     }
 }
 
-/// Conditional branch: `"br" bool_ty bool_val "," "label" local_name "," "label" local_name`
 impl fmt::Display for CondBr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
