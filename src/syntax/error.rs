@@ -3,26 +3,42 @@
 use std::{error, fmt, num::ParseIntError};
 
 use crate::syntax::{
-    lex::{Lexeme, TokenSet},
-    source::SourceFile,
+    lex::{Token, TokenSet},
+    source::{SourceFile, Span},
 };
 
-/// A parse error.
+/// An error.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error<'s> {
-    /// The lexeme which caused the error.
-    pub lex: Lexeme<'s>,
-    /// The kind of error.
-    pub kind: ErrorKind,
-    /// The context in the grammar.
-    pub ctx: Context,
+    /// The details of the error.
+    pub detail: ErrorDetail,
+    /// The source span of the error.
+    pub span: Span,
     /// The source file containing the error.
     pub src: &'s SourceFile,
 }
 
+/// The details of an error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ErrorDetail {
+    /// A parse error.
+    Parse(ParseError),
+}
+
+/// A parse error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParseError {
+    /// The kind of error.
+    pub kind: ParseErrorKind,
+    /// The token which caused the error.
+    pub tok: Token,
+    /// The context in the grammar.
+    pub ctx: ParseContext,
+}
+
 /// A kind of parse error.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ErrorKind {
+pub enum ParseErrorKind {
     /// Expected one of these tokens.
     ExpectedToken(TokenSet),
     /// Expected this identifier.
@@ -47,7 +63,7 @@ pub enum ErrorKind {
 
 /// Context in the grammar for a parse error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Context {
+pub enum ParseContext {
     /// A top-level item.
     TopLevel,
     /// A function.
@@ -102,12 +118,22 @@ pub enum Context {
     ArrayLit,
 }
 
+impl From<ParseError> for ErrorDetail {
+    fn from(err: ParseError) -> Self {
+        ErrorDetail::Parse(err)
+    }
+}
+
 impl fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Error: {}; found {}", self.kind, self.lex)?;
-        let span = &self.lex.span;
-        let start = span.start_position(self.src);
-        let end = span.end_position(self.src);
+        let ErrorDetail::Parse(err) = &self.detail;
+        write!(f, "Error: {}; found {}", err.kind, err.tok)?;
+        if err.tok.can_vary() {
+            write!(f, " `{}`", self.span.text(self.src).escape_debug())?;
+        }
+        writeln!(f)?;
+        let start = self.span.start_position(self.src);
+        let end = self.span.end_position(self.src);
         let width = end.line.ilog10() as usize + 1;
         write!(
             f,
@@ -147,14 +173,14 @@ impl fmt::Display for Error<'_> {
             )?;
         }
         writeln!(f, "{:>n$} |", "", n = width)?;
-        writeln!(f, "{:>n$} = context: parsing {}", "", self.ctx, n = width)
+        writeln!(f, "{:>n$} = context: parsing {}", "", err.ctx, n = width)
     }
 }
 
-impl fmt::Display for ErrorKind {
+impl fmt::Display for ParseErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            ErrorKind::ExpectedToken(mut tokens) => match tokens.len() {
+            ParseErrorKind::ExpectedToken(mut tokens) => match tokens.len() {
                 0 => write!(f, "unexpected token"),
                 1 => write!(f, "expected {}", tokens.next().unwrap()),
                 2 => write!(
@@ -175,48 +201,50 @@ impl fmt::Display for ErrorKind {
                     Ok(())
                 }
             },
-            ErrorKind::ExpectedIdent(ident) => write!(f, "expected `{ident}`"),
-            ErrorKind::TopLevel => write!(f, "invalid start of top-level item"),
-            ErrorKind::TypeName => write!(f, "unknown type name"),
-            ErrorKind::LitName => write!(f, "unknown literal name"),
-            ErrorKind::IntLit(ref err) => write!(f, "invalid integer literal: {err}"),
-            ErrorKind::MissingResult => write!(f, "instruction missing required result value"),
-            ErrorKind::UnexpectedResult => write!(f, "unexpected result value on void instruction"),
-            ErrorKind::UnsupportedInst => write!(f, "unsupported instruction"),
-            ErrorKind::Cond => write!(f, "invalid Boolean conditional"),
+            ParseErrorKind::ExpectedIdent(ident) => write!(f, "expected `{ident}`"),
+            ParseErrorKind::TopLevel => write!(f, "invalid start of top-level item"),
+            ParseErrorKind::TypeName => write!(f, "unknown type name"),
+            ParseErrorKind::LitName => write!(f, "unknown literal name"),
+            ParseErrorKind::IntLit(ref err) => write!(f, "invalid integer literal: {err}"),
+            ParseErrorKind::MissingResult => write!(f, "instruction missing required result value"),
+            ParseErrorKind::UnexpectedResult => {
+                write!(f, "unexpected result value on void instruction")
+            }
+            ParseErrorKind::UnsupportedInst => write!(f, "unsupported instruction"),
+            ParseErrorKind::Cond => write!(f, "invalid Boolean conditional"),
         }
     }
 }
 
-impl fmt::Display for Context {
+impl fmt::Display for ParseContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Context::TopLevel => "a top-level item",
-            Context::Func => "a function",
-            Context::FuncDeclare => "a function declaration",
-            Context::BBlock => "a basic block",
-            Context::Inst => "an instruction",
-            Context::InstResult => "the result of an instruction",
-            Context::InstOp => "the opcode of an instruction",
-            Context::ArithInst => "an arithmetic instruction",
-            Context::ExtractValueInst => "an `extractvalue` instruction",
-            Context::InsertValueInst => "an `insertvalue` instruction",
-            Context::AllocaInst => "an `alloca` instruction",
-            Context::LoadInst => "a `load` instruction",
-            Context::StoreInst => "a `store` instruction",
-            Context::ICmpInst => "an `icmp` instruction",
-            Context::PhiInst => "a `phi` instruction",
-            Context::CallInst => "a `call` instruction",
-            Context::RetInst => "a `ret` instruction",
-            Context::BrInst => "a `br` instruction",
-            Context::Cond => "a Boolean conditional",
-            Context::Val => "a value",
-            Context::Type => "a type",
-            Context::StructType => "a struct type",
-            Context::ArrayType => "an array type",
-            Context::Lit => "a literal",
-            Context::StructLit => "a struct literal",
-            Context::ArrayLit => "an array literal",
+            ParseContext::TopLevel => "a top-level item",
+            ParseContext::Func => "a function",
+            ParseContext::FuncDeclare => "a function declaration",
+            ParseContext::BBlock => "a basic block",
+            ParseContext::Inst => "an instruction",
+            ParseContext::InstResult => "the result of an instruction",
+            ParseContext::InstOp => "the opcode of an instruction",
+            ParseContext::ArithInst => "an arithmetic instruction",
+            ParseContext::ExtractValueInst => "an `extractvalue` instruction",
+            ParseContext::InsertValueInst => "an `insertvalue` instruction",
+            ParseContext::AllocaInst => "an `alloca` instruction",
+            ParseContext::LoadInst => "a `load` instruction",
+            ParseContext::StoreInst => "a `store` instruction",
+            ParseContext::ICmpInst => "an `icmp` instruction",
+            ParseContext::PhiInst => "a `phi` instruction",
+            ParseContext::CallInst => "a `call` instruction",
+            ParseContext::RetInst => "a `ret` instruction",
+            ParseContext::BrInst => "a `br` instruction",
+            ParseContext::Cond => "a Boolean conditional",
+            ParseContext::Val => "a value",
+            ParseContext::Type => "a type",
+            ParseContext::StructType => "a struct type",
+            ParseContext::ArrayType => "an array type",
+            ParseContext::Lit => "a literal",
+            ParseContext::StructLit => "a struct literal",
+            ParseContext::ArrayLit => "an array literal",
         })
     }
 }

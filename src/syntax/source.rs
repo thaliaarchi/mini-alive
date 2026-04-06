@@ -119,4 +119,9 @@ impl Span {
             src.position(self.end.offset)
         }
     }
+
+    /// Gets the source text for the span.
+    pub fn text<'s>(&self, src: &'s SourceFile) -> &'s str {
+        &src.text[self.start.offset..self.end.offset]
+    }
 }

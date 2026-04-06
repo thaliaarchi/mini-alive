@@ -7,7 +7,7 @@ use crate::syntax::{
         BBlock, Cond, Func, FuncProto, GlobalName, Lit, LocalName, Module, TopLevel, Type,
         TypedVal, Val,
     },
-    error::{Context, Error, ErrorKind},
+    error::{Error, ParseContext as Context, ParseError, ParseErrorKind as ErrorKind},
     inst::{
         Alloca, Arith, ArithOp, Call, CondBr, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
         Ret, Store, UncondBr,
@@ -534,10 +534,14 @@ impl<'s> Parser<'s> {
     }
 
     fn err(&self, lex: Lexeme<'s>, kind: ErrorKind) -> Error<'s> {
-        Error {
-            lex,
+        let err = ParseError {
             kind,
+            tok: lex.tok,
             ctx: self.ctx.get(),
+        };
+        Error {
+            detail: err.into(),
+            span: lex.span,
             src: self.lexer.src(),
         }
     }
