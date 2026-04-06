@@ -56,30 +56,21 @@ impl<'s> Scanner<'s> {
         self.start = self.end;
     }
 
-    /// Gets the next character without consuming it.
-    #[inline]
-    pub fn peek(&self) -> Option<char> {
-        self.chars.clone().next()
-    }
-
     /// Consumes and returns the next character.
     pub fn next(&mut self) -> Option<char> {
         let ch = self.chars.next()?;
-        self.end.offset = self.src.text().len() - self.chars.as_str().len();
+        self.update_end_offset();
         Some(ch)
-    }
-
-    /// Consumes the next character.
-    pub fn bump(&mut self) {
-        debug_assert!(self.next().is_some());
     }
 
     /// Consumes the next character if it matches the predicate.
     pub fn bump_if<F: FnOnce(char) -> bool>(&mut self, predicate: F) -> bool {
-        if let Some(ch) = self.peek()
+        let mut chars = self.chars.clone();
+        if let Some(ch) = chars.next()
             && predicate(ch)
         {
-            self.bump();
+            self.chars = chars;
+            self.update_end_offset();
             true
         } else {
             false
@@ -88,10 +79,27 @@ impl<'s> Scanner<'s> {
 
     /// Consumes characters matching a predicate and returns the consumed text.
     pub fn bump_while<F: FnMut(char) -> bool>(&mut self, mut predicate: F) -> bool {
+        let mut chars = self.chars.clone();
         let mut moved = false;
-        while self.bump_if(&mut predicate) {
-            moved = true;
+        loop {
+            let mut next_chars = chars.clone();
+            if let Some(ch) = next_chars.next()
+                && predicate(ch)
+            {
+                chars = next_chars;
+                moved = true;
+            } else {
+                break;
+            }
         }
+        self.chars = chars;
+        self.update_end_offset();
         moved
+    }
+
+    /// Updates the end position after moving.
+    #[inline]
+    fn update_end_offset(&mut self) {
+        self.end.offset = self.src.text().len() - self.chars.as_str().len();
     }
 }
