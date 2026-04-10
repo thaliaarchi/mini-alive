@@ -82,11 +82,29 @@ impl<'s> Parser<'s> {
         let proto = self.parse_func_proto()?;
         let mut bbs = Vec::new();
         self.expect(Token::LBrace)?;
-        loop {
-            if self.next_if(Token::RBrace).is_some() {
-                break;
+        if self.peek().tok == Token::RBrace {
+            let _ctx = self.with_ctx(Context::BBlock);
+            let lex = self.next();
+            return Err(self.err(lex, ErrorKind::MissingTerminator));
+        }
+        while self.next_if(Token::RBrace).is_none() {
+            let _ctx = self.with_ctx(Context::BBlock);
+            let label = self.next_if(Token::Label);
+            let label = self.parse_label(label)?;
+            let mut insts = Vec::new();
+            loop {
+                if token_set!(Label | RBrace | Eof).contains(self.peek().tok) {
+                    let lex = self.next();
+                    return Err(self.err(lex, ErrorKind::MissingTerminator));
+                }
+                let inst = self.parse_inst()?;
+                let is_terminator = inst.is_terminator();
+                insts.push(inst);
+                if is_terminator {
+                    break;
+                }
             }
-            bbs.push(self.parse_bb()?);
+            bbs.push(BBlock { label, insts });
         }
         Ok(Func { proto, bbs })
     }
@@ -128,20 +146,6 @@ impl<'s> Parser<'s> {
         })
     }
 
-    /// Parses a basic block.
-    fn parse_bb(&mut self) -> Result<BBlock, Error<'s>> {
-        let _ctx = self.with_ctx(Context::BBlock);
-        let label = self
-            .next_if(Token::Label)
-            .map(|label| self.parse_label(label))
-            .transpose()?;
-        let mut insts = Vec::new();
-        while !token_set!(Label | RBrace).contains(self.peek().tok) {
-            insts.push(self.parse_inst()?);
-        }
-        Ok(BBlock { label, insts })
-    }
-
     /// Parses an instruction.
     pub(super) fn parse_inst(&mut self) -> Result<Inst, Error<'s>> {
         let _ctx = self.with_ctx(Context::Inst);
@@ -155,7 +159,7 @@ impl<'s> Parser<'s> {
             self.expect(Token::Ident)?
         };
         if let Some(arith) = ArithOp::from_str(op.text) {
-            let result = self.require_result(result, op)?;
+            let result = self.parse_result(result)?;
             let ty = self.parse_type()?;
             let lhs = self.parse_val()?;
             self.expect(Token::Comma)?;
@@ -171,7 +175,7 @@ impl<'s> Parser<'s> {
         match op.text {
             "extractvalue" => {
                 let _ctx = self.with_ctx(Context::ExtractValueInst);
-                let result = self.require_result(result, op)?;
+                let result = self.parse_result(result)?;
                 let agg = self.parse_typed_val()?;
                 self.expect(Token::Comma)?;
                 let indices = self.parse_indices()?;
@@ -183,7 +187,7 @@ impl<'s> Parser<'s> {
             }
             "insertvalue" => {
                 let _ctx = self.with_ctx(Context::InsertValueInst);
-                let result = self.require_result(result, op)?;
+                let result = self.parse_result(result)?;
                 let agg = self.parse_typed_val()?;
                 self.expect(Token::Comma)?;
                 let val = self.parse_typed_val()?;
@@ -198,7 +202,7 @@ impl<'s> Parser<'s> {
             }
             "alloca" => {
                 let _ctx = self.with_ctx(Context::AllocaInst);
-                let result = self.require_result(result, op)?;
+                let result = self.parse_result(result)?;
                 let ty = self.parse_type()?;
                 let count = if self.next_if(Token::Comma).is_some() {
                     Some(self.expect_int()?)
@@ -209,7 +213,7 @@ impl<'s> Parser<'s> {
             }
             "load" => {
                 let _ctx = self.with_ctx(Context::LoadInst);
-                let result = self.require_result(result, op)?;
+                let result = self.parse_result(result)?;
                 let ty = self.parse_type()?;
                 self.expect(Token::Comma)?;
                 let ptr = self.parse_typed_val()?;
@@ -232,7 +236,7 @@ impl<'s> Parser<'s> {
             }
             "icmp" => {
                 let _ctx = self.with_ctx(Context::ICmpInst);
-                let result = self.require_result(result, op)?;
+                let result = self.parse_result(result)?;
                 let cond = self.expect(Token::Ident)?;
                 let Some(cond) = Cond::from_str(cond.text) else {
                     return Err(self.err(cond, ErrorKind::Cond));
@@ -251,7 +255,7 @@ impl<'s> Parser<'s> {
             }
             "phi" => {
                 let _ctx = self.with_ctx(Context::PhiInst);
-                let result = self.require_result(result, op)?;
+                let result = self.parse_result(result)?;
                 let ty = self.parse_type()?;
                 let mut sources = Vec::new();
                 loop {
@@ -273,7 +277,7 @@ impl<'s> Parser<'s> {
             }
             "call" => {
                 let _ctx = self.with_ctx(Context::CallInst);
-                let result = self.require_result(result, op)?;
+                let result = self.parse_result(result)?;
                 let ret_ty = self.parse_type()?;
                 let func = self.expect_global_var()?;
                 self.expect(Token::LParen)?;
@@ -509,16 +513,20 @@ impl<'s> Parser<'s> {
     fn parse_var(&self, text: &'s str, lex: Lexeme<'s>) -> Result<Var, Error<'s>> {
         if text.as_bytes()[0].is_ascii_digit() {
             text.parse()
-                .map(Var::Id)
+                .map(Var::Numeric)
                 .map_err(|err| self.err(lex, ErrorKind::Id(err)))
         } else {
             Ok(Var::Name(text.to_owned()))
         }
     }
 
-    fn parse_label(&self, lex: Lexeme<'s>) -> Result<LocalVar, Error<'s>> {
-        self.parse_var(&lex.text[..lex.text.len() - 1], lex)
-            .map(LocalVar)
+    fn parse_label(&self, lex: Option<Lexeme<'s>>) -> Result<LocalVar, Error<'s>> {
+        match lex {
+            Some(lex) => self
+                .parse_var(&lex.text[..lex.text.len() - 1], lex)
+                .map(LocalVar),
+            None => Ok(LocalVar(Var::Unnamed)),
+        }
     }
 
     fn expect_int<T: FromStr<Err = ParseIntError>>(&mut self) -> Result<T, Error<'s>> {
@@ -532,18 +540,14 @@ impl<'s> Parser<'s> {
             .map_err(|err| self.err(lex, ErrorKind::IntLit(err)))
     }
 
-    fn require_result(
-        &self,
-        result: Option<Lexeme<'s>>,
-        op: Lexeme<'s>,
-    ) -> Result<LocalVar, Error<'s>> {
-        match result {
+    fn parse_result(&self, result: Option<Lexeme<'s>>) -> Result<LocalVar, Error<'s>> {
+        Ok(LocalVar(match result {
             Some(result) => {
                 debug_assert_eq!(result.tok, Token::LocalVar);
-                Ok(LocalVar(self.parse_var(&result.text[1..], result)?))
+                self.parse_var(&result.text[1..], result)?
             }
-            None => Err(self.err(op, ErrorKind::MissingResult)),
-        }
+            None => Var::Unnamed,
+        }))
     }
 
     fn forbid_result(&self, result: Option<Lexeme<'s>>) -> Result<(), Error<'s>> {

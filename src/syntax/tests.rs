@@ -90,10 +90,21 @@ fn bools() {
 #[test]
 fn instructions() {
     let src = "\
+add i16 %0, 1
+extractvalue {i16, i16} {i16 4, i16 2}, 0
+insertvalue {i16, i16} {i16 4, i16 2}, i16 7, 1
+alloca i16, 4
+load i16, ptr %p
+store i16 %0, ptr %p
+icmp eq i16 %0, 0
+phi i16 [ %0, %1 ], [ 0, %2 ]
+call i16 @f(i16 %0)
 ret i16 5
 ret { i16, i16 } { i16 4, i16 2 }
 ret {[3 x i16], {ptr, {}}}
     {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}
+br label %done
+br i1 %cond, label %t, label %f
 ";
     let src = SourceFile::new(src.into(), "test".into());
     let mut parser = Parser::new(&src);
@@ -104,9 +115,20 @@ ret {[3 x i16], {ptr, {}}}
     assert_eq!(
         insts,
         [
+            "add i16 %0, 1",
+            "extractvalue {i16, i16} {i16 4, i16 2}, 0",
+            "insertvalue {i16, i16} {i16 4, i16 2}, i16 7, 1",
+            "alloca i16, 4",
+            "load i16, ptr %p",
+            "store i16 %0, ptr %p",
+            "icmp eq i16 %0, 0",
+            "phi i16 [ %0, %1 ], [ 0, %2 ]",
+            "call i16 @f(i16 %0)",
             "ret i16 5",
             "ret {i16, i16} {i16 4, i16 2}",
-            "ret {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}"
+            "ret {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}",
+            "br label %done",
+            "br i1 %cond, label %t, label %f",
         ]
     );
 }
@@ -140,6 +162,23 @@ while.body:
 
 while.end:
   ret i16 %c.0
+}
+",
+        "\
+define i16 @popcnt(i16) {
+  br label %2
+
+  phi i16 [ %0, %1 ], [ %8, %6 ]
+  phi i16 [ 0, %1 ], [ %9, %6 ]
+  icmp eq i16 %3, 0
+  br i1 %5, label %10, label %6
+
+  add i16 %3, -1
+  and i16 %3, %7
+  add i16 %4, 1
+  br label %2
+
+  ret i16 %4
 }
 ",
         "declare i16 @popcnt(i16 %x)\n",
@@ -260,7 +299,56 @@ Error: expected identifier; found invalid token `/* unterminated\\n  ret i16 0\\
   |
   = context: parsing the opcode of an instruction
 "
-        )
+        ),
+        (
+            "\
+define i16 @src() {
+}
+",
+            "\
+Error: basic block missing terminator; found `}`
+ --> errs.ll:2:1
+  |
+2 | }
+  | ^
+  |
+  = context: parsing a basic block
+",
+        ),
+        (
+            "\
+define i16 @src() {
+  add i16 1, 2
+}
+",
+            "\
+Error: basic block missing terminator; found `}`
+ --> errs.ll:3:1
+  |
+3 | }
+  | ^
+  |
+  = context: parsing a basic block
+",
+        ),
+        (
+            "\
+define i16 @src() {
+  br label %1
+
+  add i16 1, 2
+}
+",
+            "\
+Error: basic block missing terminator; found `}`
+ --> errs.ll:5:1
+  |
+5 | }
+  | ^
+  |
+  = context: parsing a basic block
+",
+        ),
     ];
     for (src, diagnostic) in tests {
         let src = SourceFile::new(src.into(), "errs.ll".into());

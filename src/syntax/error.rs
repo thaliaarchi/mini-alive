@@ -53,12 +53,12 @@ pub enum ParseErrorKind {
     TypeName,
     /// Unknown literal name.
     LitName,
-    /// Instruction missing required result value.
-    MissingResult,
     /// Unexpected result value on void instruction.
     UnexpectedResult,
     /// Unknown instruction.
     UnsupportedInst,
+    /// Basic block missing terminator.
+    MissingTerminator,
     /// Invalid Boolean conditional.
     Cond,
 }
@@ -209,11 +209,11 @@ impl fmt::Display for ParseErrorKind {
             ParseErrorKind::IntLit(ref err) => write!(f, "invalid integer literal: {err}"),
             ParseErrorKind::TypeName => write!(f, "unknown type name"),
             ParseErrorKind::LitName => write!(f, "unknown literal name"),
-            ParseErrorKind::MissingResult => write!(f, "instruction missing required result value"),
             ParseErrorKind::UnexpectedResult => {
                 write!(f, "unexpected result value on void instruction")
             }
             ParseErrorKind::UnsupportedInst => write!(f, "unsupported instruction"),
+            ParseErrorKind::MissingTerminator => write!(f, "basic block missing terminator"),
             ParseErrorKind::Cond => write!(f, "invalid Boolean conditional"),
         }
     }

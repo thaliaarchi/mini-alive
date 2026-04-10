@@ -45,26 +45,25 @@ var ::= ident | [0-9]+
 val ::= local_var | int_lit | ptr_lit | struct_lit | array_lit
 bool_val ::= local_var | bool_lit
 
-func_define ::= "define" type global_var params "{" (entry_bb bb*)? "}"
+func_define ::= "define" type global_var params "{" bb+ "}"
 func_declare ::= "declare" type global_var params
 
 params ::= "(" (param ("," param)*)? ")"
 param ::= type local_var?
 args ::= "(" (arg ("," arg)*)? ")"
 arg ::= type val
-entry_bb ::= label? inst* inst_term
-bb ::= label inst* inst_term
+bb ::= label? inst* inst_term
 
 inst ::=
-    | local_var "=" arith int_ty val "," val
-    | local_var "=" "extractvalue" struct_ty val "," int_lit ("," int_lit)*
-    | local_var "=" "insertvalue" struct_ty val "," type val "," int_lit ("," int_lit)*
-    | local_var "=" "alloca" type ("," int_ty val)?
-    | local_var "=" "load" type "," ptr_ty val ("," "align" int_lit)?
+    | (local_var "=")? arith int_ty val "," val
+    | (local_var "=")? "extractvalue" struct_ty val "," int_lit ("," int_lit)*
+    | (local_var "=")? "insertvalue" struct_ty val "," type val "," int_lit ("," int_lit)*
+    | (local_var "=")? "alloca" type ("," int_ty val)?
+    | (local_var "=")? "load" type "," ptr_ty val ("," "align" int_lit)?
     | "store" type val "," ptr_ty val ("," "align" int_lit)?
-    | local_var "=" "icmp" cond type val "," val
-    | local_var "=" "phi" type "[" val "," local_var "]" ("," "[" val "," local_var "]")*
-    | local_var "=" "call" type global_var args
+    | (local_var "=")? "icmp" cond type val "," val
+    | (local_var "=")? "phi" type "[" val "," local_var "]" ("," "[" val "," local_var "]")*
+    | (local_var "=")? "call" type global_var args
 arith ::=
     | "add" | "sub" | "mul"
     | "udiv" | "sdiv" | "urem" | "srem"

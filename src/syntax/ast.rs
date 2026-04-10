@@ -48,7 +48,7 @@ pub struct FuncProto {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BBlock {
     /// The basic block label.
-    pub label: Option<LocalVar>,
+    pub label: LocalVar,
     /// The instructions in the basic block.
     pub insts: Vec<Inst>,
 }
@@ -64,10 +64,12 @@ pub struct LocalVar(pub Var);
 /// A global or local variable.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Var {
-    /// An integer variable.
-    Id(u32),
     /// A named variable.
     Name(String),
+    /// An explicit numeric variable.
+    Numeric(u32),
+    /// An implicit numeric variable.
+    Unnamed,
 }
 
 /// A value with an associated type.
@@ -250,8 +252,8 @@ impl FuncProto {
 
 impl fmt::Display for BBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(label) = &self.label {
-            writeln!(f, "{}:", label.0)?;
+        if self.label.0 != Var::Unnamed {
+            writeln!(f, "{}:", self.label.0)?;
         }
         for inst in &self.insts {
             writeln!(f, "  {inst}")?;
@@ -275,8 +277,9 @@ impl fmt::Display for LocalVar {
 impl fmt::Display for Var {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Var::Id(id) => write!(f, "{id}"),
             Var::Name(name) => write!(f, "{name}"),
+            Var::Numeric(id) => write!(f, "{id}"),
+            Var::Unnamed => write!(f, "?"),
         }
     }
 }

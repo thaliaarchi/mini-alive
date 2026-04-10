@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::{
-    syntax::ast::{Cond, GlobalVar, LocalVar, Type, TypedVal, Val},
+    syntax::ast::{Cond, GlobalVar, LocalVar, Type, TypedVal, Val, Var},
     util::make_enum,
 };
 
@@ -226,6 +226,13 @@ pub struct CondBr {
     pub label_false: LocalVar,
 }
 
+impl Inst {
+    /// Returns whether the instruction is a basic block terminator.
+    pub fn is_terminator(&self) -> bool {
+        matches!(self, Inst::Ret(_) | Inst::UncondBr(_) | Inst::CondBr(_))
+    }
+}
+
 macro_rules! impl_from_for_inst(($($Ty:ident),* $(,)?) => {
     $(impl From<$Ty> for Inst {
         fn from(inst: $Ty) -> Self {
@@ -331,17 +338,15 @@ impl fmt::Display for Inst {
 
 impl fmt::Display for Arith {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} = {} {} {}, {}",
-            self.result, self.op, self.ty, self.lhs, self.rhs,
-        )
+        fmt_result(f, &self.result)?;
+        write!(f, "{} {} {}, {}", self.op, self.ty, self.lhs, self.rhs)
     }
 }
 
 impl fmt::Display for ExtractValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} = extractvalue {}", self.result, self.agg)?;
+        fmt_result(f, &self.result)?;
+        write!(f, "extractvalue {}", self.agg)?;
         for &n in &self.indices {
             write!(f, ", {n}")?;
         }
@@ -351,11 +356,8 @@ impl fmt::Display for ExtractValue {
 
 impl fmt::Display for InsertValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} = insertvalue {}, {}",
-            self.result, self.agg, self.val,
-        )?;
+        fmt_result(f, &self.result)?;
+        write!(f, "insertvalue {}, {}", self.agg, self.val)?;
         for &n in &self.indices {
             write!(f, ", {n}")?;
         }
@@ -365,7 +367,8 @@ impl fmt::Display for InsertValue {
 
 impl fmt::Display for Alloca {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} = alloca {}", self.result, self.ty)?;
+        fmt_result(f, &self.result)?;
+        write!(f, "alloca {}", self.ty)?;
         if let Some(elems) = self.count {
             write!(f, ", {elems}")?;
         }
@@ -375,7 +378,8 @@ impl fmt::Display for Alloca {
 
 impl fmt::Display for Load {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} = load {}, {}", self.result, self.ty, self.ptr)
+        fmt_result(f, &self.result)?;
+        write!(f, "load {}, {}", self.ty, self.ptr)
     }
 }
 
@@ -387,17 +391,19 @@ impl fmt::Display for Store {
 
 impl fmt::Display for ICmp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_result(f, &self.result)?;
         write!(
             f,
-            "{} = icmp {} {} {}, {}",
-            self.result, self.cond, self.ty, self.lhs, self.rhs,
+            "icmp {} {} {}, {}",
+            self.cond, self.ty, self.lhs, self.rhs,
         )
     }
 }
 
 impl fmt::Display for Phi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} = phi {}", self.result, self.ty)?;
+        fmt_result(f, &self.result)?;
+        write!(f, "phi {}", self.ty)?;
         let mut first = true;
         for (val, pred) in &self.sources {
             if !first {
@@ -412,7 +418,8 @@ impl fmt::Display for Phi {
 
 impl fmt::Display for Call {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} = call {} {}(", self.result, self.ret_ty, self.func)?;
+        fmt_result(f, &self.result)?;
+        write!(f, "call {} {}(", self.ret_ty, self.func)?;
         let mut first = true;
         for arg in &self.args {
             if !first {
@@ -444,5 +451,13 @@ impl fmt::Display for CondBr {
             "br {}, label {}, label {}",
             self.cond, self.label_true, self.label_false,
         )
+    }
+}
+
+fn fmt_result(f: &mut fmt::Formatter<'_>, result: &LocalVar) -> fmt::Result {
+    if result.0 == Var::Unnamed {
+        Ok(())
+    } else {
+        write!(f, "{} = ", result)
     }
 }
