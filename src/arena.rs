@@ -1,7 +1,7 @@
 //! IDs for arenas.
 
 use std::{
-    fmt,
+    any, fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
     ops::Range,
@@ -42,7 +42,7 @@ impl<T> Clone for Id<T> {
 impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Id({})", self.index)
+        write!(f, "Id<{}>({})", type_name::<T>(), self.index)
     }
 }
 impl<T> PartialEq for Id<T> {
@@ -132,6 +132,45 @@ impl<T> Clone for IdIter<T> {
 }
 impl<T> fmt::Debug for IdIter<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "IdIter({}..{})", self.front, self.back)
+        let t = type_name::<T>();
+        write!(f, "IdIter<{t}>({}..{})", self.front, self.back)
+    }
+}
+
+fn type_name<T>() -> &'static str {
+    let type_name = any::type_name::<T>();
+    let mut start = 0;
+    let mut end = type_name.len();
+    for (i, &b) in type_name.as_bytes().iter().enumerate() {
+        if b == b'<' {
+            end = i;
+            break;
+        } else if b == b':' && type_name.as_bytes().get(i + 1) == Some(&b':') {
+            start = i + 2;
+        }
+    }
+    &type_name[start..end]
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::syntax::inst::Inst;
+
+    use super::*;
+
+    #[test]
+    fn fmt_type_name() {
+        assert_eq!(type_name::<Inst>(), "Inst");
+        assert_eq!(type_name::<String>(), "String");
+        assert_eq!(type_name::<Option<String>>(), "Option");
+        assert_eq!(format!("{:?}", Id::<Inst>::from_index(0)), "Id<Inst>(0)");
+        assert_eq!(
+            format!("{:?}", Id::<String>::from_index(0)),
+            "Id<String>(0)",
+        );
+        assert_eq!(
+            format!("{:?}", Id::<Option<String>>::from_index(0)),
+            "Id<Option>(0)",
+        );
     }
 }
