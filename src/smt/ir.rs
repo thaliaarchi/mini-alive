@@ -1,11 +1,8 @@
 //! An IR for SMT queries, independent of any solver.
 
-use std::{
-    fmt,
-    ops::{Index, Range},
-};
+use std::{fmt, ops::Index};
 
-use crate::util::make_id;
+use crate::arena::{Id, IdIter};
 
 // TODO:
 // - Validate sorts on insertion.
@@ -30,11 +27,8 @@ pub enum Sort {
     },
 }
 
-make_id! {
-    /// The ID of a term in a context.
-    pub struct TermId(..);
-    iter TermIdIter "term IDs";
-}
+/// The ID of a term in a context.
+pub type TermId = Id<Term>;
 
 /// An SMT IR expression.
 #[expect(missing_docs)]
@@ -112,8 +106,7 @@ impl Context {
     /// Inserts a term into the context and returns its ID.
     pub fn insert(&mut self, term: Term) -> TermId {
         self.terms.push(term);
-        assert!(u32::try_from(self.terms.len()).is_ok(), "TermId overflow");
-        TermId(self.terms.len() as u32 - 1)
+        TermId::from_index(self.terms.len() - 1)
     }
 
     /// Gets the sort of a term.
@@ -122,8 +115,8 @@ impl Context {
     }
 
     /// Returns an iterator over the IDs of the terms in the context.
-    pub fn term_ids(&self) -> TermIdIter {
-        TermId::iter(TermId(0)..TermId(self.terms.len() as _))
+    pub fn term_ids(&self) -> IdIter<Term> {
+        TermId::iter(TermId::from_index(0)..TermId::from_index(self.terms.len()))
     }
 }
 
@@ -185,14 +178,14 @@ impl Index<TermId> for Context {
     type Output = Term;
 
     fn index(&self, id: TermId) -> &Self::Output {
-        &self.terms[id.as_usize()]
+        &self.terms[id.index()]
     }
 }
 
 impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, term) in self.terms.iter().enumerate() {
-            let id = TermId(i as u32);
+        for id in self.term_ids() {
+            let term = &self[id];
             let sort = term.sort(self);
             writeln!(f, "{id} : {sort} = {term}")?;
         }
@@ -211,7 +204,7 @@ impl fmt::Display for Sort {
 
 impl fmt::Display for TermId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "%{}", self.as_usize())
+        write!(f, "%{}", self.index())
     }
 }
 

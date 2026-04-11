@@ -13,7 +13,7 @@ pub fn lower_context(ctx: &Context) -> Script {
             ListStyle::Hanging,
             vec![
                 SExp::from(Atom::CommandName(CommandName::DefineFun)),
-                sym(format!("t{}", id.as_usize())),
+                sym(format!("t{}", id.index())),
                 list(ListStyle::Vertical, Vec::new()),
                 lower_sort(&ctx.sort(id)),
                 lower_term(ctx, id),

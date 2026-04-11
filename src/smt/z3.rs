@@ -44,7 +44,7 @@ impl Z3Builder {
     /// Lowers SMT IR to Z3.
     pub fn lower(&mut self, ctx: &Context) -> Result<(), Error> {
         for id in ctx.term_ids() {
-            self.terms[id.as_usize()] = Some(self.lower_term(&ctx[id])?);
+            self.terms[id.index()] = Some(self.lower_term(&ctx[id])?);
         }
         Ok(())
     }
@@ -113,7 +113,7 @@ impl Index<TermId> for Z3Builder {
     type Output = Z3_ast;
 
     fn index(&self, id: TermId) -> &Self::Output {
-        self.terms[id.as_usize()]
+        self.terms[id.index()]
             .as_ref()
             .expect("referenced term not lowered")
     }
