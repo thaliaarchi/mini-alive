@@ -43,7 +43,7 @@ impl Z3Builder {
 
     /// Lowers SMT IR to Z3.
     pub fn lower(&mut self, ctx: &Context) -> Result<(), Error> {
-        for id in ctx.term_ids() {
+        for id in ctx.iter_ids() {
             self.terms[id.index()] = Some(self.lower_term(&ctx[id])?);
         }
         Ok(())

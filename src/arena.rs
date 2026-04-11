@@ -1,16 +1,57 @@
-//! IDs for arenas.
+//! Typed arena with IDs.
 
 use std::{
     any, fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
-    ops::Range,
+    ops::{Index, Range},
 };
+
+/// A typed arena.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Arena<T> {
+    values: Vec<T>,
+}
 
 /// The ID of a value in an arena.
 pub struct Id<T> {
     index: u32,
     marker: PhantomData<T>,
+}
+
+impl<T> Arena<T> {
+    /// Constructs an empty arena.
+    pub fn new() -> Self {
+        Arena { values: Vec::new() }
+    }
+
+    /// Inserts a value into the context and returns its ID.
+    pub fn insert(&mut self, value: T) -> Id<T> {
+        self.values.push(value);
+        Id::from_index(self.values.len() - 1)
+    }
+
+    /// Returns an iterator over the IDs of the values in the arena.
+    pub fn iter_ids(&self) -> IdIter<T> {
+        Id::iter(Id::from_index(0)..Id::from_index(self.values.len()))
+    }
+}
+
+impl<T> Index<Id<T>> for Arena<T> {
+    type Output = T;
+
+    fn index(&self, id: Id<T>) -> &Self::Output {
+        &self.values[id.index()]
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Arena<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Arena<{}> ", type_name::<T>())?;
+        f.debug_map()
+            .entries(self.iter_ids().map(|id| (id, &self[id])))
+            .finish()
+    }
 }
 
 impl<T> Id<T> {

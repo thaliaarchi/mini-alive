@@ -8,7 +8,7 @@ use crate::smt::{
 /// Lowers all terms in a context to `define-fun` commands.
 pub fn lower_context(ctx: &Context) -> Script {
     let mut script = Script::new();
-    for id in ctx.term_ids() {
+    for id in ctx.iter_ids() {
         script.push(list(
             ListStyle::Hanging,
             vec![

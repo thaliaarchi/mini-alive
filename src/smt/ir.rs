@@ -1,8 +1,8 @@
 //! An IR for SMT queries, independent of any solver.
 
-use std::{fmt, ops::Index};
+use std::fmt;
 
-use crate::arena::{Id, IdIter};
+use crate::arena::{Arena, Id};
 
 // TODO:
 // - Validate sorts on insertion.
@@ -11,9 +11,7 @@ use crate::arena::{Id, IdIter};
 // - Should and/or be variable arity like SMT-LIB2 and Z3?
 
 /// A manager for SMT IR.
-pub struct Context {
-    terms: Vec<Term>,
-}
+pub type Context = Arena<Term>;
 
 /// The sort (type) of a term.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -98,25 +96,9 @@ pub enum Term {
 }
 
 impl Context {
-    /// Constructs an empty context.
-    pub fn new() -> Self {
-        Context { terms: Vec::new() }
-    }
-
-    /// Inserts a term into the context and returns its ID.
-    pub fn insert(&mut self, term: Term) -> TermId {
-        self.terms.push(term);
-        TermId::from_index(self.terms.len() - 1)
-    }
-
     /// Gets the sort of a term.
     pub fn sort(&self, id: TermId) -> Sort {
         self[id].sort(self)
-    }
-
-    /// Returns an iterator over the IDs of the terms in the context.
-    pub fn term_ids(&self) -> IdIter<Term> {
-        TermId::iter(TermId::from_index(0)..TermId::from_index(self.terms.len()))
     }
 }
 
@@ -174,17 +156,9 @@ impl Term {
     }
 }
 
-impl Index<TermId> for Context {
-    type Output = Term;
-
-    fn index(&self, id: TermId) -> &Self::Output {
-        &self.terms[id.index()]
-    }
-}
-
-impl fmt::Debug for Context {
+impl fmt::Display for Arena<Term> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for id in self.term_ids() {
+        for id in self.iter_ids() {
             let term = &self[id];
             let sort = term.sort(self);
             writeln!(f, "{id} : {sort} = {term}")?;
@@ -261,7 +235,7 @@ mod tests {
             else_: y,
         });
         assert_eq!(
-            format!("{ctx:?}"),
+            ctx.to_string(),
             "\
 %0 : bool = false
 %1 : bool = not %0
