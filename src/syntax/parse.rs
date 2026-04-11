@@ -112,7 +112,7 @@ impl<'s> Parser<'s> {
     /// Parses a function declaration, starting after `"declare"`.
     fn parse_func_declare(&mut self) -> Result<FuncProto<'s>, Error<'s>> {
         let _ctx = self.with_ctx(Context::FuncDeclare);
-        Ok(self.parse_func_proto()?)
+        self.parse_func_proto()
     }
 
     /// Parses a function prototype.
@@ -179,11 +179,11 @@ impl<'s> Parser<'s> {
                 let agg = self.parse_typed_val()?;
                 self.expect(Token::Comma)?;
                 let indices = self.parse_indices()?;
-                return Ok(Inst::from(ExtractValue {
+                Ok(Inst::from(ExtractValue {
                     result,
                     agg,
                     indices,
-                }));
+                }))
             }
             "insertvalue" => {
                 let _ctx = self.with_ctx(Context::InsertValueInst);

@@ -165,6 +165,12 @@ impl Script {
     }
 }
 
+impl Default for Script {
+    fn default() -> Self {
+        Script::new()
+    }
+}
+
 impl<T: Into<Vec<SExp>>> From<T> for Script {
     fn from(commands: T) -> Self {
         Script {

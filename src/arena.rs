@@ -45,6 +45,12 @@ impl<T> Index<Id<T>> for Arena<T> {
     }
 }
 
+impl<T> Default for Arena<T> {
+    fn default() -> Self {
+        Arena::new()
+    }
+}
+
 impl<T: fmt::Debug> fmt::Debug for Arena<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Arena<{}> ", type_name::<T>())?;
@@ -74,10 +80,7 @@ impl<T> Id<T> {
 
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
-        Id {
-            index: self.index,
-            marker: PhantomData,
-        }
+        *self
     }
 }
 impl<T> Copy for Id<T> {}
@@ -99,7 +102,7 @@ impl<T> Hash for Id<T> {
 }
 impl<T> PartialOrd for Id<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.index.cmp(&other.index))
+        Some(self.cmp(other))
     }
 }
 impl<T> Ord for Id<T> {
