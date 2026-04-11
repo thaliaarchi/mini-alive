@@ -10,62 +10,62 @@ use crate::{syntax::inst::Inst, util::make_enum};
 
 /// A module.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Module {
+pub struct Module<'s> {
     /// The top-level items.
-    pub items: Vec<TopLevel>,
+    pub items: Vec<TopLevel<'s>>,
 }
 
 /// A top-level item.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TopLevel {
+pub enum TopLevel<'s> {
     /// A function definition.
-    Func(Func),
+    Func(Func<'s>),
     /// A function declaration.
-    FuncDeclare(FuncProto),
+    FuncDeclare(FuncProto<'s>),
 }
 
 /// A function: `"define" type global_name params "{" (entry_bb bb*)? "}"`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Func {
+pub struct Func<'s> {
     /// The function prototype.
-    pub proto: FuncProto,
+    pub proto: FuncProto<'s>,
     /// The basic blocks.
-    pub bbs: Vec<BBlock>,
+    pub bbs: Vec<BBlock<'s>>,
 }
 
 /// A function prototype: `"declare" type global_name params`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FuncProto {
+pub struct FuncProto<'s> {
     /// The return type.
     pub ret_ty: Type,
     /// The name of the function.
-    pub name: GlobalVar,
+    pub name: GlobalVar<'s>,
     /// The function parameters.
-    pub params: Vec<(Type, Option<LocalVar>)>,
+    pub params: Vec<(Type, Option<LocalVar<'s>>)>,
 }
 
 /// A basic block: `label? inst* inst_term`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BBlock {
+pub struct BBlock<'s> {
     /// The basic block label.
-    pub label: LocalVar,
+    pub label: LocalVar<'s>,
     /// The instructions in the basic block.
-    pub insts: Vec<Inst>,
+    pub insts: Vec<Inst<'s>>,
 }
 
 /// A global variable (`@`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GlobalVar(pub Var);
+pub struct GlobalVar<'s>(pub Var<'s>);
 
 /// A local variable (`%`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LocalVar(pub Var);
+pub struct LocalVar<'s>(pub Var<'s>);
 
 /// A global or local variable.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Var {
+pub enum Var<'s> {
     /// A named variable.
-    Name(String),
+    Name(&'s str),
     /// An explicit numeric variable.
     Numeric(u32),
     /// An implicit numeric variable.
@@ -74,20 +74,20 @@ pub enum Var {
 
 /// A value with an associated type.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TypedVal {
+pub struct TypedVal<'s> {
     /// The type of the value.
     pub ty: Type,
     /// A value.
-    pub val: Val,
+    pub val: Val<'s>,
 }
 
 /// A value.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Val {
+pub enum Val<'s> {
     /// Literal value.
     Lit(Lit),
     /// Local value.
-    Local(LocalVar),
+    Local(LocalVar<'s>),
 }
 
 /// A type.
@@ -187,7 +187,7 @@ impl Lit {
     }
 }
 
-impl fmt::Display for Module {
+impl fmt::Display for Module<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut first = true;
         for item in &self.items {
@@ -201,7 +201,7 @@ impl fmt::Display for Module {
     }
 }
 
-impl fmt::Display for TopLevel {
+impl fmt::Display for TopLevel<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TopLevel::Func(func) => func.fmt(f),
@@ -210,7 +210,7 @@ impl fmt::Display for TopLevel {
     }
 }
 
-impl fmt::Display for Func {
+impl fmt::Display for Func<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.proto.fmt_proto(f, "define")?;
         f.write_str(" {\n")?;
@@ -226,13 +226,13 @@ impl fmt::Display for Func {
     }
 }
 
-impl fmt::Display for FuncProto {
+impl fmt::Display for FuncProto<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_proto(f, "declare")?;
         f.write_str("\n")
     }
 }
-impl FuncProto {
+impl FuncProto<'_> {
     fn fmt_proto(&self, f: &mut fmt::Formatter<'_>, start: &str) -> fmt::Result {
         write!(f, "{start} {} {}(", self.ret_ty, self.name)?;
         let mut first = true;
@@ -250,7 +250,7 @@ impl FuncProto {
     }
 }
 
-impl fmt::Display for BBlock {
+impl fmt::Display for BBlock<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.label.0 != Var::Unnamed {
             writeln!(f, "{}:", self.label.0)?;
@@ -262,19 +262,19 @@ impl fmt::Display for BBlock {
     }
 }
 
-impl fmt::Display for GlobalVar {
+impl fmt::Display for GlobalVar<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "@{}", self.0)
     }
 }
 
-impl fmt::Display for LocalVar {
+impl fmt::Display for LocalVar<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "%{}", self.0)
     }
 }
 
-impl fmt::Display for Var {
+impl fmt::Display for Var<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Var::Name(name) => write!(f, "{name}"),
@@ -284,13 +284,13 @@ impl fmt::Display for Var {
     }
 }
 
-impl fmt::Display for TypedVal {
+impl fmt::Display for TypedVal<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.ty, self.val)
     }
 }
 
-impl fmt::Display for Val {
+impl fmt::Display for Val<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Val::Lit(lit) => lit.fmt(f),

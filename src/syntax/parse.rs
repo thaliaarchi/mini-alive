@@ -57,7 +57,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a module.
-    pub fn parse_module(&mut self) -> Result<Module, Error<'s>> {
+    pub fn parse_module(&mut self) -> Result<Module<'s>, Error<'s>> {
         let mut items = Vec::new();
         while !self.eof() {
             items.push(self.parse_top_level()?);
@@ -66,7 +66,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a top-level item.
-    fn parse_top_level(&mut self) -> Result<TopLevel, Error<'s>> {
+    fn parse_top_level(&mut self) -> Result<TopLevel<'s>, Error<'s>> {
         let _ctx = self.with_ctx(Context::TopLevel);
         let ident = self.expect(Token::Ident)?;
         match ident.text {
@@ -77,7 +77,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a function definition, starting after `"define"`.
-    fn parse_func(&mut self) -> Result<Func, Error<'s>> {
+    fn parse_func(&mut self) -> Result<Func<'s>, Error<'s>> {
         let _ctx = self.with_ctx(Context::Func);
         let proto = self.parse_func_proto()?;
         let mut bbs = Vec::new();
@@ -110,13 +110,13 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a function declaration, starting after `"declare"`.
-    fn parse_func_declare(&mut self) -> Result<FuncProto, Error<'s>> {
+    fn parse_func_declare(&mut self) -> Result<FuncProto<'s>, Error<'s>> {
         let _ctx = self.with_ctx(Context::FuncDeclare);
         Ok(self.parse_func_proto()?)
     }
 
     /// Parses a function prototype.
-    fn parse_func_proto(&mut self) -> Result<FuncProto, Error<'s>> {
+    fn parse_func_proto(&mut self) -> Result<FuncProto<'s>, Error<'s>> {
         let ret_ty = self.parse_type()?;
         let name = self.expect_global_var()?;
 
@@ -147,7 +147,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses an instruction.
-    pub(super) fn parse_inst(&mut self) -> Result<Inst, Error<'s>> {
+    pub(super) fn parse_inst(&mut self) -> Result<Inst<'s>, Error<'s>> {
         let _ctx = self.with_ctx(Context::Inst);
         let result = self.next_if(Token::LocalVar);
         if result.is_some() {
@@ -333,14 +333,14 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a typed value.
-    fn parse_typed_val(&mut self) -> Result<TypedVal, Error<'s>> {
+    fn parse_typed_val(&mut self) -> Result<TypedVal<'s>, Error<'s>> {
         let ty = self.parse_type()?;
         let val = self.parse_val()?;
         Ok(TypedVal { ty, val })
     }
 
     /// Parses a value.
-    fn parse_val(&mut self) -> Result<Val, Error<'s>> {
+    fn parse_val(&mut self) -> Result<Val<'s>, Error<'s>> {
         let _ctx = self.with_ctx(Context::Val);
         if self.peek().tok == Token::LocalVar {
             Ok(Val::Local(self.expect_local_var()?))
@@ -500,27 +500,27 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn expect_global_var(&mut self) -> Result<GlobalVar, Error<'s>> {
+    fn expect_global_var(&mut self) -> Result<GlobalVar<'s>, Error<'s>> {
         let lex = self.expect(Token::GlobalVar)?;
         Ok(GlobalVar(self.parse_var(&lex.text[1..], lex)?))
     }
 
-    fn expect_local_var(&mut self) -> Result<LocalVar, Error<'s>> {
+    fn expect_local_var(&mut self) -> Result<LocalVar<'s>, Error<'s>> {
         let lex = self.expect(Token::LocalVar)?;
         Ok(LocalVar(self.parse_var(&lex.text[1..], lex)?))
     }
 
-    fn parse_var(&self, text: &'s str, lex: Lexeme<'s>) -> Result<Var, Error<'s>> {
+    fn parse_var(&self, text: &'s str, lex: Lexeme<'s>) -> Result<Var<'s>, Error<'s>> {
         if text.as_bytes()[0].is_ascii_digit() {
             text.parse()
                 .map(Var::Numeric)
                 .map_err(|err| self.err(lex, ErrorKind::Id(err)))
         } else {
-            Ok(Var::Name(text.to_owned()))
+            Ok(Var::Name(text))
         }
     }
 
-    fn parse_label(&self, lex: Option<Lexeme<'s>>) -> Result<LocalVar, Error<'s>> {
+    fn parse_label(&self, lex: Option<Lexeme<'s>>) -> Result<LocalVar<'s>, Error<'s>> {
         match lex {
             Some(lex) => self
                 .parse_var(&lex.text[..lex.text.len() - 1], lex)
@@ -540,7 +540,7 @@ impl<'s> Parser<'s> {
             .map_err(|err| self.err(lex, ErrorKind::IntLit(err)))
     }
 
-    fn parse_result(&self, result: Option<Lexeme<'s>>) -> Result<LocalVar, Error<'s>> {
+    fn parse_result(&self, result: Option<Lexeme<'s>>) -> Result<LocalVar<'s>, Error<'s>> {
         Ok(LocalVar(match result {
             Some(result) => {
                 debug_assert_eq!(result.tok, Token::LocalVar);
