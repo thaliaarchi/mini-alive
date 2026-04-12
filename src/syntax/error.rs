@@ -21,24 +21,24 @@ pub struct Error<'s> {
 /// The details of an error.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ErrorDetail {
-    /// A parse error.
-    Parse(ParseError),
+    /// A syntax error.
+    Syntax(SyntaxError),
 }
 
-/// A parse error.
+/// A syntax error.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ParseError {
+pub struct SyntaxError {
     /// The kind of error.
-    pub kind: ParseErrorKind,
+    pub kind: SyntaxErrorKind,
     /// The token which caused the error.
     pub tok: Token,
     /// The context in the grammar.
-    pub ctx: ParseContext,
+    pub ctx: SyntaxContext,
 }
 
-/// A kind of parse error.
+/// A kind of syntax error.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ParseErrorKind {
+pub enum SyntaxErrorKind {
     /// Expected one of these tokens.
     ExpectedToken(TokenSet),
     /// Expected this identifier.
@@ -63,9 +63,9 @@ pub enum ParseErrorKind {
     Cond,
 }
 
-/// Context in the grammar for a parse error.
+/// Context in the grammar for a syntax error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ParseContext {
+pub enum SyntaxContext {
     /// A top-level item.
     TopLevel,
     /// A function.
@@ -120,15 +120,15 @@ pub enum ParseContext {
     ArrayLit,
 }
 
-impl From<ParseError> for ErrorDetail {
-    fn from(err: ParseError) -> Self {
-        ErrorDetail::Parse(err)
+impl From<SyntaxError> for ErrorDetail {
+    fn from(err: SyntaxError) -> Self {
+        ErrorDetail::Syntax(err)
     }
 }
 
 impl fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ErrorDetail::Parse(err) = &self.detail;
+        let ErrorDetail::Syntax(err) = &self.detail;
         write!(f, "Error: {}; found {}", err.kind, err.tok)?;
         if err.tok.can_vary() {
             write!(f, " `{}`", self.span.text(self.src).escape_debug())?;
@@ -179,10 +179,10 @@ impl fmt::Display for Error<'_> {
     }
 }
 
-impl fmt::Display for ParseErrorKind {
+impl fmt::Display for SyntaxErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            ParseErrorKind::ExpectedToken(mut tokens) => match tokens.len() {
+            SyntaxErrorKind::ExpectedToken(mut tokens) => match tokens.len() {
                 0 => write!(f, "unexpected token"),
                 1 => write!(f, "expected {}", tokens.next().unwrap()),
                 2 => write!(
@@ -203,51 +203,51 @@ impl fmt::Display for ParseErrorKind {
                     Ok(())
                 }
             },
-            ParseErrorKind::ExpectedIdent(ident) => write!(f, "expected `{ident}`"),
-            ParseErrorKind::TopLevel => write!(f, "invalid start of top-level item"),
-            ParseErrorKind::Id(ref err) => write!(f, "invalid integer ID: {err}"),
-            ParseErrorKind::IntLit(ref err) => write!(f, "invalid integer literal: {err}"),
-            ParseErrorKind::TypeName => write!(f, "unknown type name"),
-            ParseErrorKind::LitName => write!(f, "unknown literal name"),
-            ParseErrorKind::UnexpectedResult => {
+            SyntaxErrorKind::ExpectedIdent(ident) => write!(f, "expected `{ident}`"),
+            SyntaxErrorKind::TopLevel => write!(f, "invalid start of top-level item"),
+            SyntaxErrorKind::Id(ref err) => write!(f, "invalid integer ID: {err}"),
+            SyntaxErrorKind::IntLit(ref err) => write!(f, "invalid integer literal: {err}"),
+            SyntaxErrorKind::TypeName => write!(f, "unknown type name"),
+            SyntaxErrorKind::LitName => write!(f, "unknown literal name"),
+            SyntaxErrorKind::UnexpectedResult => {
                 write!(f, "unexpected result value on void instruction")
             }
-            ParseErrorKind::UnsupportedInst => write!(f, "unsupported instruction"),
-            ParseErrorKind::MissingTerminator => write!(f, "basic block missing terminator"),
-            ParseErrorKind::Cond => write!(f, "invalid Boolean conditional"),
+            SyntaxErrorKind::UnsupportedInst => write!(f, "unsupported instruction"),
+            SyntaxErrorKind::MissingTerminator => write!(f, "basic block missing terminator"),
+            SyntaxErrorKind::Cond => write!(f, "invalid Boolean conditional"),
         }
     }
 }
 
-impl fmt::Display for ParseContext {
+impl fmt::Display for SyntaxContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            ParseContext::TopLevel => "a top-level item",
-            ParseContext::Func => "a function",
-            ParseContext::FuncDeclare => "a function declaration",
-            ParseContext::BBlock => "a basic block",
-            ParseContext::Inst => "an instruction",
-            ParseContext::InstResult => "the result of an instruction",
-            ParseContext::InstOp => "the opcode of an instruction",
-            ParseContext::ArithInst => "an arithmetic instruction",
-            ParseContext::ExtractValueInst => "an `extractvalue` instruction",
-            ParseContext::InsertValueInst => "an `insertvalue` instruction",
-            ParseContext::AllocaInst => "an `alloca` instruction",
-            ParseContext::LoadInst => "a `load` instruction",
-            ParseContext::StoreInst => "a `store` instruction",
-            ParseContext::ICmpInst => "an `icmp` instruction",
-            ParseContext::PhiInst => "a `phi` instruction",
-            ParseContext::CallInst => "a `call` instruction",
-            ParseContext::RetInst => "a `ret` instruction",
-            ParseContext::BrInst => "a `br` instruction",
-            ParseContext::Cond => "a Boolean conditional",
-            ParseContext::Val => "a value",
-            ParseContext::Type => "a type",
-            ParseContext::StructType => "a struct type",
-            ParseContext::ArrayType => "an array type",
-            ParseContext::Lit => "a literal",
-            ParseContext::StructLit => "a struct literal",
-            ParseContext::ArrayLit => "an array literal",
+            SyntaxContext::TopLevel => "a top-level item",
+            SyntaxContext::Func => "a function",
+            SyntaxContext::FuncDeclare => "a function declaration",
+            SyntaxContext::BBlock => "a basic block",
+            SyntaxContext::Inst => "an instruction",
+            SyntaxContext::InstResult => "the result of an instruction",
+            SyntaxContext::InstOp => "the opcode of an instruction",
+            SyntaxContext::ArithInst => "an arithmetic instruction",
+            SyntaxContext::ExtractValueInst => "an `extractvalue` instruction",
+            SyntaxContext::InsertValueInst => "an `insertvalue` instruction",
+            SyntaxContext::AllocaInst => "an `alloca` instruction",
+            SyntaxContext::LoadInst => "a `load` instruction",
+            SyntaxContext::StoreInst => "a `store` instruction",
+            SyntaxContext::ICmpInst => "an `icmp` instruction",
+            SyntaxContext::PhiInst => "a `phi` instruction",
+            SyntaxContext::CallInst => "a `call` instruction",
+            SyntaxContext::RetInst => "a `ret` instruction",
+            SyntaxContext::BrInst => "a `br` instruction",
+            SyntaxContext::Cond => "a Boolean conditional",
+            SyntaxContext::Val => "a value",
+            SyntaxContext::Type => "a type",
+            SyntaxContext::StructType => "a struct type",
+            SyntaxContext::ArrayType => "an array type",
+            SyntaxContext::Lit => "a literal",
+            SyntaxContext::StructLit => "a struct literal",
+            SyntaxContext::ArrayLit => "an array literal",
         })
     }
 }

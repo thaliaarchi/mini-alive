@@ -7,7 +7,7 @@ use crate::syntax::{
         BBlock, Cond, Func, FuncProto, GlobalVar, Lit, LocalVar, Module, TopLevel, Type, TypedVal,
         Val, Var,
     },
-    error::{Error, ParseContext as Context, ParseError, ParseErrorKind as ErrorKind},
+    error::{Error, SyntaxContext as Context, SyntaxError, SyntaxErrorKind as ErrorKind},
     inst::{
         Alloca, Arith, ArithOp, Call, CondBr, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
         Ret, Store, UncondBr,
@@ -558,7 +558,7 @@ impl<'s> Parser<'s> {
     }
 
     fn err(&self, lex: Lexeme<'s>, kind: ErrorKind) -> Error<'s> {
-        let err = ParseError {
+        let err = SyntaxError {
             kind,
             tok: lex.tok,
             ctx: self.ctx.get(),
@@ -570,7 +570,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    /// Sets the current parse context and returns a guard which will reset it
+    /// Sets the current syntax context and returns a guard which will reset it
     /// at the end of its scope.
     fn with_ctx(&self, ctx: Context) -> ContextGuard {
         ContextGuard {
@@ -580,7 +580,7 @@ impl<'s> Parser<'s> {
     }
 }
 
-/// Resets the parse context to the old context.
+/// Resets the syntax context to the old context.
 impl Drop for ContextGuard {
     fn drop(&mut self) {
         unsafe { *self.ctx = self.old_ctx };
