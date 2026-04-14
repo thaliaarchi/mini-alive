@@ -41,7 +41,7 @@ pub struct FuncProto<'s> {
     /// The name of the function.
     pub name: GlobalVar<'s>,
     /// The function parameters.
-    pub params: Vec<(Type, Option<LocalVar<'s>>)>,
+    pub params: Vec<(Type, LocalVar<'s>)>,
 }
 
 /// A basic block: `label? inst* inst_term`.
@@ -59,7 +59,7 @@ pub struct GlobalVar<'s>(pub Var<'s>);
 
 /// A local variable (`%`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LocalVar<'s>(pub Var<'s>);
+pub struct LocalVar<'s>(pub ResolvedVar<'s>);
 
 /// A global or local variable.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,6 +70,15 @@ pub enum Var<'s> {
     Numeric(u32),
     /// An implicit numeric variable.
     Unnamed,
+}
+
+/// A resolved variable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ResolvedVar<'s> {
+    /// A named variable.
+    Name(&'s str),
+    /// A numeric variable.
+    Numeric(u32),
 }
 
 /// A value with an associated type.
@@ -241,10 +250,7 @@ impl FuncProto<'_> {
                 f.write_str(", ")?;
             }
             first = false;
-            write!(f, "{ty}")?;
-            if let Some(name) = name {
-                write!(f, " {name}")?;
-            }
+            write!(f, "{ty} {name}")?;
         }
         f.write_str(")")
     }
@@ -252,9 +258,7 @@ impl FuncProto<'_> {
 
 impl fmt::Display for BBlock<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.label.0 != Var::Unnamed {
-            writeln!(f, "{}:", self.label.0)?;
-        }
+        writeln!(f, "{}:", self.label.0)?;
         for inst in &self.insts {
             writeln!(f, "  {inst}")?;
         }
@@ -278,8 +282,17 @@ impl fmt::Display for Var<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Var::Name(name) => write!(f, "{name}"),
-            Var::Numeric(id) => write!(f, "{id}"),
+            Var::Numeric(n) => write!(f, "{n}"),
             Var::Unnamed => write!(f, "?"),
+        }
+    }
+}
+
+impl fmt::Display for ResolvedVar<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResolvedVar::Name(name) => write!(f, "{name}"),
+            ResolvedVar::Numeric(n) => write!(f, "{n}"),
         }
     }
 }

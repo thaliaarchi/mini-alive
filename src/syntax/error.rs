@@ -3,15 +3,19 @@
 use std::{error, fmt, num::ParseIntError};
 
 use crate::syntax::{
+    ast::ResolvedVar,
     lex::{Token, TokenSet},
     source::{SourceFile, Span},
 };
+
+// TODO:
+// - Handle secondary spans for variable errors.
 
 /// An error.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error<'s> {
     /// The details of the error.
-    pub detail: ErrorDetail,
+    pub detail: ErrorDetail<'s>,
     /// The source span of the error.
     pub span: Span,
     /// The source file containing the error.
@@ -20,9 +24,11 @@ pub struct Error<'s> {
 
 /// The details of an error.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ErrorDetail {
+pub enum ErrorDetail<'s> {
     /// A syntax error.
     Syntax(SyntaxError),
+    /// A variable reference error.
+    Var(VarError<'s>),
 }
 
 /// A syntax error.
@@ -120,18 +126,76 @@ pub enum SyntaxContext {
     ArrayLit,
 }
 
-impl From<SyntaxError> for ErrorDetail {
+/// A variable error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VarError<'s> {
+    /// The variable which caused the error.
+    pub var: ResolvedVar<'s>,
+    /// The kind of error.
+    pub kind: VarErrorKind,
+}
+
+/// A kind of variable error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VarErrorKind {
+    /// Undefined variable.
+    Undefined {
+        /// The variable kind.
+        kind: VarKind,
+    },
+    /// Refined variable.
+    Redefined {
+        /// The span of the first definition.
+        first_span: Span,
+    },
+    /// Variable references definition of another kind.
+    KindMismatch {
+        /// The kind of the variable.
+        kind: VarKind,
+        /// The kind of the definition.
+        def_kind: VarKind,
+        /// The span of the definition.
+        def_span: Span,
+    },
+    /// Variable is less than next available ID.
+    NonIncreasingNumeric {
+        /// The next available ID.
+        min: u32,
+    },
+}
+
+/// The kind of a variable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VarKind {
+    /// Basic block.
+    BBlock,
+    /// Value (instruction or parameter).
+    Value,
+}
+
+impl From<SyntaxError> for ErrorDetail<'_> {
     fn from(err: SyntaxError) -> Self {
         ErrorDetail::Syntax(err)
     }
 }
 
+impl<'s> From<VarError<'s>> for ErrorDetail<'s> {
+    fn from(err: VarError<'s>) -> Self {
+        ErrorDetail::Var(err)
+    }
+}
+
 impl fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ErrorDetail::Syntax(err) = &self.detail;
-        write!(f, "Error: {}; found {}", err.kind, err.tok)?;
-        if err.tok.can_vary() {
-            write!(f, " `{}`", self.span.text(self.src).escape_debug())?;
+        write!(f, "Error: ")?;
+        match &self.detail {
+            ErrorDetail::Syntax(err) => {
+                write!(f, "{}; found {}", err.kind, err.tok)?;
+                if err.tok.can_vary() {
+                    write!(f, " `{}`", self.span.text(self.src).escape_debug())?;
+                }
+            }
+            ErrorDetail::Var(err) => write!(f, "{err}")?,
         }
         writeln!(f)?;
         let start = self.span.start_position(self.src);
@@ -175,7 +239,13 @@ impl fmt::Display for Error<'_> {
             )?;
         }
         writeln!(f, "{:>n$} |", "", n = width)?;
-        writeln!(f, "{:>n$} = context: parsing {}", "", err.ctx, n = width)
+        match &self.detail {
+            ErrorDetail::Syntax(err) => {
+                writeln!(f, "{:>n$} = context: parsing {}", "", err.ctx, n = width)?;
+            }
+            ErrorDetail::Var(_) => {}
+        }
+        Ok(())
     }
 }
 
@@ -248,6 +318,33 @@ impl fmt::Display for SyntaxContext {
             SyntaxContext::Lit => "a literal",
             SyntaxContext::StructLit => "a struct literal",
             SyntaxContext::ArrayLit => "an array literal",
+        })
+    }
+}
+
+impl fmt::Display for VarError<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let var = &self.var;
+        match self.kind {
+            VarErrorKind::Undefined { kind } => write!(f, "undefined {kind} %{var}"),
+            VarErrorKind::Redefined { .. } => write!(f, "redefined %{var}"),
+            VarErrorKind::KindMismatch {
+                def_kind: found,
+                kind: expected,
+                ..
+            } => write!(f, "%{var} references {found}, but expected {expected}"),
+            VarErrorKind::NonIncreasingNumeric { min } => {
+                write!(f, "%{var} is less than the next available ID %{min}")
+            }
+        }
+    }
+}
+
+impl fmt::Display for VarKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            VarKind::BBlock => "basic block",
+            VarKind::Value => "value",
         })
     }
 }

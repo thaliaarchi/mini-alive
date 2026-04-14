@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::{
-    syntax::ast::{Cond, GlobalVar, LocalVar, Type, TypedVal, Val, Var},
+    syntax::ast::{Cond, GlobalVar, LocalVar, Type, TypedVal, Val},
     util::make_enum,
 };
 
@@ -455,9 +455,5 @@ impl fmt::Display for CondBr<'_> {
 }
 
 fn fmt_result(f: &mut fmt::Formatter<'_>, result: &LocalVar) -> fmt::Result {
-    if result.0 == Var::Unnamed {
-        Ok(())
-    } else {
-        write!(f, "{} = ", result)
-    }
+    write!(f, "{} = ", result)
 }

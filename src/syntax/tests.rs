@@ -1,5 +1,6 @@
 use crate::syntax::{
     ast::{Lit, Type},
+    build::FuncBuilder,
     parse::Parser,
     source::SourceFile,
 };
@@ -110,20 +111,21 @@ br i1 %cond, label %t, label %f
     let mut parser = Parser::new(&src);
     let mut insts = Vec::new();
     while !parser.eof() {
-        insts.push(parser.parse_inst().unwrap().to_string());
+        let mut builder = FuncBuilder::new(&src);
+        insts.push(parser.parse_inst(&mut builder).unwrap().to_string());
     }
     assert_eq!(
         insts,
         [
-            "add i16 %0, 1",
-            "extractvalue {i16, i16} {i16 4, i16 2}, 0",
-            "insertvalue {i16, i16} {i16 4, i16 2}, i16 7, 1",
-            "alloca i16, 4",
-            "load i16, ptr %p",
+            "%0 = add i16 %0, 1",
+            "%0 = extractvalue {i16, i16} {i16 4, i16 2}, 0",
+            "%0 = insertvalue {i16, i16} {i16 4, i16 2}, i16 7, 1",
+            "%0 = alloca i16, 4",
+            "%0 = load i16, ptr %p",
             "store i16 %0, ptr %p",
-            "icmp eq i16 %0, 0",
-            "phi i16 [ %0, %1 ], [ 0, %2 ]",
-            "call i16 @f(i16 %0)",
+            "%0 = icmp eq i16 %0, 0",
+            "%0 = phi i16 [ %0, %1 ], [ 0, %2 ]",
+            "%0 = call i16 @f(i16 %0)",
             "ret i16 5",
             "ret {i16, i16} {i16 4, i16 2}",
             "ret {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}",
@@ -135,15 +137,15 @@ br i1 %cond, label %t, label %f
 
 #[test]
 fn module() {
-    let tests = [
-        "\
+    let agg = "\
 define {[3 x i16], {ptr, {}}} @src() {
+0:
   ret {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}
 }
 
 declare {[3 x i16], {ptr, {}}} @src2()
-",
-        "\
+";
+    let popcnt = "\
 define i16 @popcnt(i16 %x) {
 entry:
   br label %while.cond
@@ -163,8 +165,12 @@ while.body:
 while.end:
   ret i16 %c.0
 }
-",
-        "\
+";
+    let tests = [
+        (agg, agg),
+        (popcnt, popcnt),
+        (
+            "\
 define i16 @popcnt(i16) {
   br label %2
 
@@ -181,13 +187,38 @@ define i16 @popcnt(i16) {
   ret i16 %4
 }
 ",
-        "declare i16 @popcnt(i16 %x)\n",
+            "\
+define i16 @popcnt(i16 %0) {
+1:
+  br label %2
+
+2:
+  %3 = phi i16 [ %0, %1 ], [ %8, %6 ]
+  %4 = phi i16 [ 0, %1 ], [ %9, %6 ]
+  %5 = icmp eq i16 %3, 0
+  br i1 %5, label %10, label %6
+
+6:
+  %7 = add i16 %3, -1
+  %8 = and i16 %3, %7
+  %9 = add i16 %4, 1
+  br label %2
+
+10:
+  ret i16 %4
+}
+",
+        ),
+        (
+            "declare i16 @popcnt(i16 %x)\n",
+            "declare i16 @popcnt(i16 %x)\n",
+        ),
     ];
-    for src in tests {
+    for (src, expected) in tests {
         let src = SourceFile::new(src.into(), "test".into());
         let mut parser = Parser::new(&src);
         let module = parser.parse_module().unwrap();
-        assert_eq!(module.to_string(), src.text());
+        assert_eq!(module.to_string(), expected);
         assert!(parser.eof());
     }
 }
@@ -222,14 +253,20 @@ define i16 @0(i16 %0) {
 #[test]
 fn unnamed_params() {
     let tests = [
-        "declare i16 @f(i16, ptr %p)\n",
-        "define i16 @f(i16, ptr %p) {\n  ret i16 0\n}\n",
+        (
+            "declare i16 @f(i16, ptr %p)\n",
+            "declare i16 @f(i16 %0, ptr %p)\n",
+        ),
+        (
+            "define i16 @f(i16, ptr %p) {\n  ret i16 0\n}\n",
+            "define i16 @f(i16 %0, ptr %p) {\n1:\n  ret i16 0\n}\n",
+        ),
     ];
-    for src in tests {
+    for (src, expected) in tests {
         let src = SourceFile::new(src.into(), "test".into());
         let mut parser = Parser::new(&src);
         let module = parser.parse_module().unwrap();
-        assert_eq!(module.to_string(), src.text());
+        assert_eq!(module.to_string(), expected);
     }
 }
 
@@ -347,6 +384,88 @@ Error: basic block missing terminator; found `}`
   | ^
   |
   = context: parsing a basic block
+",
+        ),
+        (
+            "\
+define i16 @f() {
+  ret i16 %x
+}
+",
+            "\
+Error: undefined value %x
+ --> errs.ll:2:11-2:13
+  |
+2 |   ret i16 %x
+  |           ^^
+  |
+",
+        ),
+        (
+            "\
+define i16 @f(i16 %x) {
+x:
+  ret i16 %x
+}
+",
+            "\
+Error: redefined %x
+ --> errs.ll:2:1-2:3
+  |
+2 | x:
+  | ^^
+  |
+",
+        ),
+        (
+            "\
+define i16 @f() {
+entry:
+  br label %bb
+bb:
+  ret i16 %entry
+}
+",
+            "\
+Error: %entry references basic block, but expected value
+ --> errs.ll:5:11-5:17
+  |
+5 |   ret i16 %entry
+  |           ^^^^^^
+  |
+",
+        ),
+        (
+            "\
+define i16 @f(i16 %x) {
+entry:
+  br label %x
+}
+",
+            "\
+Error: %x references value, but expected basic block
+ --> errs.ll:3:12-3:14
+  |
+3 |   br label %x
+  |            ^^
+  |
+",
+        ),
+        (
+            "\
+define i16 @f(i16 %2) {
+3:
+  %1 = add i16 %2, 1
+  ret i16 %1
+}
+",
+            "\
+Error: %1 is less than the next available ID %4
+ --> errs.ll:3:3-3:5
+  |
+3 |   %1 = add i16 %2, 1
+  |   ^^
+  |
 ",
         ),
     ];
