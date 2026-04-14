@@ -88,7 +88,7 @@ pub trait InstData<'s> {
     fn result(&self) -> Option<&LocalVar<'s>>;
 }
 
-/// Arithmetic operation: `local_name "=" arith int_ty val "," val`
+/// Arithmetic operation: `(local_var "=")? arith int_ty val "," val`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Arith<'s> {
     /// The result SSA value name.
@@ -103,7 +103,7 @@ pub struct Arith<'s> {
     pub rhs: Val<'s>,
 }
 
-/// Aggregate element access: `local_name "=" "extractvalue" struct_ty val "," int_lit ("," int_lit)*`
+/// Aggregate element access: `(local_var "=")? "extractvalue" struct_ty val "," int_lit ("," int_lit)*`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExtractValue<'s> {
     /// The result SSA value name.
@@ -114,7 +114,7 @@ pub struct ExtractValue<'s> {
     pub indices: Vec<usize>,
 }
 
-/// Aggregate element write: `local_name "=" "insertvalue" struct_ty val "," type val "," int_lit ("," int_lit)*`
+/// Aggregate element write: `(local_var "=")? "insertvalue" struct_ty val "," type val "," int_lit ("," int_lit)*`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InsertValue<'s> {
     /// The result SSA value name.
@@ -127,7 +127,7 @@ pub struct InsertValue<'s> {
     pub indices: Vec<usize>,
 }
 
-/// Stack allocation: `local_name "=" "alloca" type ("," int_ty val)?`
+/// Stack allocation: `(local_var "=")? "alloca" type ("," int_ty val)?`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Alloca<'s> {
     /// The result SSA value name.
@@ -138,7 +138,7 @@ pub struct Alloca<'s> {
     pub count: Option<usize>,
 }
 
-/// Memory load: `local_name "=" "load" type "," ptr_ty val`
+/// Memory load: `(local_var "=")? "load" type "," ptr_ty val ("," "align" int_lit)?`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Load<'s> {
     /// The result SSA value name.
@@ -151,7 +151,7 @@ pub struct Load<'s> {
     pub align: Option<usize>,
 }
 
-/// Memory store: `"store" type val "," ptr_ty val`
+/// Memory store: `"store" type val "," ptr_ty val ("," "align" int_lit)?`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Store<'s> {
     /// The value to store.
@@ -162,7 +162,7 @@ pub struct Store<'s> {
     pub align: Option<usize>,
 }
 
-/// Integer comparison: `local_name "=" "icmp" cond type val "," val`
+/// Integer comparison: `(local_var "=")? "icmp" cond type val "," val`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ICmp<'s> {
     /// The result SSA value name.
@@ -177,7 +177,7 @@ pub struct ICmp<'s> {
     pub rhs: Val<'s>,
 }
 
-/// Phi: `local_name "=" "phi" type "[" val "," local_name "]" ("," "[" val "," local_name "]")*`
+/// Phi: `(local_var "=")? "phi" type "[" val "," local_var "]" ("," "[" val "," local_var "]")*`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Phi<'s> {
     /// The result SSA value name.
@@ -188,7 +188,7 @@ pub struct Phi<'s> {
     pub sources: Vec<(Val<'s>, LocalVar<'s>)>,
 }
 
-/// Function call: `local_name "=" "call" type global_name "(" (arg ("," arg)*)? ")"`
+/// Function call: `(local_var "=")? "call" type global_var "(" (arg ("," arg)*)? ")"`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Call<'s> {
     /// The result SSA value name.
@@ -208,14 +208,14 @@ pub struct Ret<'s> {
     pub val: TypedVal<'s>,
 }
 
-/// Unconditional branch: `"br" "label" local_name`
+/// Unconditional branch: `"br" "label" local_var`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UncondBr<'s> {
     /// The label to jump to.
     pub label: LocalVar<'s>,
 }
 
-/// Conditional branch: `"br" bool_ty bool_val "," "label" local_name "," "label" local_name`
+/// Conditional branch: `"br" bool_ty bool_val "," "label" local_var "," "label" local_var`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CondBr<'s> {
     /// The Boolean condition.
