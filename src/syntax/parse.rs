@@ -171,16 +171,16 @@ impl<'s> Parser<'s> {
             let _ctx = self.with_ctx(Context::InstOp);
             self.expect(Token::Ident)?
         };
+        let mut ty = Type::Void;
         let inst = match op.text {
             _ if let Some(arith) = ArithOp::from_str(op.text) => {
                 let _ctx = self.with_ctx(Context::ArithInst);
-                let ty = self.parse_type()?;
+                ty = self.parse_type()?;
                 let lhs = self.parse_val(builder)?;
                 self.expect(Token::Comma)?;
                 let rhs = self.parse_val(builder)?;
                 Inst::from(Arith {
                     op: arith,
-                    ty,
                     lhs,
                     rhs,
                 })
@@ -188,6 +188,7 @@ impl<'s> Parser<'s> {
             "extractvalue" => {
                 let _ctx = self.with_ctx(Context::ExtractValueInst);
                 let agg = self.parse_typed_val(builder)?;
+                ty = agg.ty.clone();
                 self.expect(Token::Comma)?;
                 let indices = self.parse_indices()?;
                 Inst::from(ExtractValue { agg, indices })
@@ -195,6 +196,7 @@ impl<'s> Parser<'s> {
             "insertvalue" => {
                 let _ctx = self.with_ctx(Context::InsertValueInst);
                 let agg = self.parse_typed_val(builder)?;
+                ty = agg.ty.clone();
                 self.expect(Token::Comma)?;
                 let val = self.parse_typed_val(builder)?;
                 self.expect(Token::Comma)?;
@@ -203,25 +205,26 @@ impl<'s> Parser<'s> {
             }
             "alloca" => {
                 let _ctx = self.with_ctx(Context::AllocaInst);
-                let ty = self.parse_type()?;
+                ty = Type::Ptr;
+                let elem_ty = self.parse_type()?;
                 let count = if self.next_if(Token::Comma).is_some() {
                     Some(self.expect_int()?)
                 } else {
                     None
                 };
                 Inst::from(Alloca {
-                    ty,
+                    elem_ty,
                     count,
                     lifetime: PhantomData,
                 })
             }
             "load" => {
                 let _ctx = self.with_ctx(Context::LoadInst);
-                let ty = self.parse_type()?;
+                ty = self.parse_type()?;
                 self.expect(Token::Comma)?;
                 let ptr = self.parse_typed_val(builder)?;
                 let align = self.parse_align()?;
-                Inst::from(Load { ty, ptr, align })
+                Inst::from(Load { ptr, align })
             }
             "store" => {
                 let _ctx = self.with_ctx(Context::StoreInst);
@@ -233,6 +236,7 @@ impl<'s> Parser<'s> {
             }
             "icmp" => {
                 let _ctx = self.with_ctx(Context::ICmpInst);
+                ty = Type::Bool;
                 let cond = self.expect(Token::Ident)?;
                 let Some(cond) = Cond::from_str(cond.text) else {
                     return Err(self.err(cond, ErrorKind::Cond));
@@ -245,7 +249,7 @@ impl<'s> Parser<'s> {
             }
             "phi" => {
                 let _ctx = self.with_ctx(Context::PhiInst);
-                let ty = self.parse_type()?;
+                ty = self.parse_type()?;
                 let mut sources = Vec::new();
                 loop {
                     self.expect(Token::LBracket)?;
@@ -258,11 +262,11 @@ impl<'s> Parser<'s> {
                         break;
                     }
                 }
-                Inst::from(Phi { ty, sources })
+                Inst::from(Phi { sources })
             }
             "call" => {
                 let _ctx = self.with_ctx(Context::CallInst);
-                let ret_ty = self.parse_type()?;
+                ty = self.parse_type()?;
                 let func = self.expect_global_var()?;
                 self.expect(Token::LParen)?;
                 let mut args = Vec::new();
@@ -276,7 +280,7 @@ impl<'s> Parser<'s> {
                     }
                 }
                 self.expect(Token::RParen)?;
-                Inst::from(Call { ret_ty, func, args })
+                Inst::from(Call { func, args })
             }
             "ret" => {
                 let _ctx = self.with_ctx(Context::RetInst);
@@ -322,7 +326,11 @@ impl<'s> Parser<'s> {
             }
             None
         };
-        Ok(InstData { inst, name: result })
+        Ok(InstData {
+            inst,
+            name: result,
+            ty,
+        })
     }
 
     /// Parses a typed value.

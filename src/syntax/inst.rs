@@ -11,6 +11,9 @@ use crate::{
     util::make_enum,
 };
 
+// TODO:
+// - Deduplicate the result value type in `ExtractValue` and `InsertValue`.
+
 /// An instruction and associated metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstData<'s> {
@@ -19,6 +22,9 @@ pub struct InstData<'s> {
     /// The name of the SSA value produced by this instruction. Present iff this
     /// is a value instruction.
     pub name: Option<LocalVar<'s>>,
+    /// The type of the SSA value produced by this instruction. `Void` if this
+    /// is not a value instruction.
+    pub ty: Type,
 }
 
 /// An instruction.
@@ -100,8 +106,6 @@ make_enum! {
 pub struct Arith<'s> {
     /// The arithmetic operation.
     pub op: ArithOp,
-    /// The type of the LHS and RHS.
-    pub ty: Type,
     /// The LHS value.
     pub lhs: Val<'s>,
     /// The RHS value.
@@ -131,8 +135,8 @@ pub struct InsertValue<'s> {
 /// Stack allocation: `(local_var "=")? "alloca" type ("," int_ty val)?`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Alloca<'s> {
-    /// The type of the allocated elements.
-    pub ty: Type,
+    /// The type of the elements.
+    pub elem_ty: Type,
     /// The number of elements.
     pub count: Option<usize>,
     /// The lifetime of the source.
@@ -142,8 +146,6 @@ pub struct Alloca<'s> {
 /// Memory load: `(local_var "=")? "load" type "," ptr_ty val ("," "align" int_lit)?`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Load<'s> {
-    /// The type to load as.
-    pub ty: Type,
     /// The address to load from.
     pub ptr: TypedVal<'s>,
     /// The alignment of the operation.
@@ -177,8 +179,6 @@ pub struct ICmp<'s> {
 /// Phi: `(local_var "=")? "phi" type "[" val "," local_var "]" ("," "[" val "," local_var "]")*`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Phi<'s> {
-    /// The type of the value.
-    pub ty: Type,
     /// A value for each predecessor basic block.
     pub sources: Vec<(Val<'s>, LocalVar<'s>)>,
 }
@@ -186,8 +186,6 @@ pub struct Phi<'s> {
 /// Function call: `(local_var "=")? "call" type global_var "(" (arg ("," arg)*)? ")"`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Call<'s> {
-    /// The type of the return value.
-    pub ret_ty: Type,
     /// The function to call.
     pub func: GlobalVar<'s>,
     /// The arguments to pass.
@@ -281,136 +279,67 @@ impl fmt::Display for InstData<'_> {
         if let Some(name) = &self.name {
             write!(f, "{name} = ")?;
         }
-        self.inst.fmt(f)
-    }
-}
-
-impl fmt::Display for Inst<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let inst: &dyn fmt::Display = match self {
-            Inst::Arith(arith) => arith,
-            Inst::ExtractValue(extractvalue) => extractvalue,
-            Inst::InsertValue(insertvalue) => insertvalue,
-            Inst::Alloca(alloca) => alloca,
-            Inst::Load(load) => load,
-            Inst::Store(store) => store,
-            Inst::ICmp(icmp) => icmp,
-            Inst::Phi(phi) => phi,
-            Inst::Call(call) => call,
-            Inst::Ret(ret) => ret,
-            Inst::UncondBr(br1) => br1,
-            Inst::CondBr(br2) => br2,
-        };
-        inst.fmt(f)
-    }
-}
-
-impl fmt::Display for Arith<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {}, {}", self.op, self.ty, self.lhs, self.rhs)
-    }
-}
-
-impl fmt::Display for ExtractValue<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "extractvalue {}", self.agg)?;
-        for &n in &self.indices {
-            write!(f, ", {n}")?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for InsertValue<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "insertvalue {}, {}", self.agg, self.val)?;
-        for &n in &self.indices {
-            write!(f, ", {n}")?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for Alloca<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "alloca {}", self.ty)?;
-        if let Some(elems) = self.count {
-            write!(f, ", {elems}")?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for Load<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "load {}, {}", self.ty, self.ptr)
-    }
-}
-
-impl fmt::Display for Store<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "store {}, {}", self.val, self.ptr)
-    }
-}
-
-impl fmt::Display for ICmp<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "icmp {} {} {}, {}",
-            self.cond, self.ty, self.lhs, self.rhs,
-        )
-    }
-}
-
-impl fmt::Display for Phi<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "phi {}", self.ty)?;
-        let mut first = true;
-        for (val, pred) in &self.sources {
-            if !first {
-                f.write_str(",")?;
+        match &self.inst {
+            Inst::Arith(inst) => write!(f, "{} {} {}, {}", inst.op, self.ty, inst.lhs, inst.rhs),
+            Inst::ExtractValue(inst) => {
+                write!(f, "extractvalue {}", inst.agg)?;
+                for &n in &inst.indices {
+                    write!(f, ", {n}")?;
+                }
+                Ok(())
             }
-            first = false;
-            write!(f, " [ {val}, {pred} ]")?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for Call<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "call {} {}(", self.ret_ty, self.func)?;
-        let mut first = true;
-        for arg in &self.args {
-            if !first {
-                f.write_str(", ")?;
+            Inst::InsertValue(inst) => {
+                write!(f, "insertvalue {}, {}", inst.agg, inst.val)?;
+                for &n in &inst.indices {
+                    write!(f, ", {n}")?;
+                }
+                Ok(())
             }
-            first = false;
-            write!(f, "{arg}")?;
+            Inst::Alloca(inst) => {
+                write!(f, "alloca {}", inst.elem_ty)?;
+                if let Some(elems) = inst.count {
+                    write!(f, ", {elems}")?;
+                }
+                Ok(())
+            }
+            Inst::Load(inst) => write!(f, "load {}, {}", self.ty, inst.ptr),
+            Inst::Store(inst) => write!(f, "store {}, {}", inst.val, inst.ptr),
+            Inst::ICmp(inst) => write!(
+                f,
+                "icmp {} {} {}, {}",
+                inst.cond, inst.ty, inst.lhs, inst.rhs,
+            ),
+            Inst::Phi(inst) => {
+                write!(f, "phi {}", self.ty)?;
+                let mut first = true;
+                for (val, pred) in &inst.sources {
+                    if !first {
+                        f.write_str(",")?;
+                    }
+                    first = false;
+                    write!(f, " [ {val}, {pred} ]")?;
+                }
+                Ok(())
+            }
+            Inst::Call(inst) => {
+                write!(f, "call {} {}(", self.ty, inst.func)?;
+                let mut first = true;
+                for arg in &inst.args {
+                    if !first {
+                        f.write_str(", ")?;
+                    }
+                    first = false;
+                    write!(f, "{arg}")?;
+                }
+                f.write_str(")")
+            }
+            Inst::Ret(inst) => write!(f, "ret {}", inst.val),
+            Inst::UncondBr(inst) => write!(f, "br label {}", inst.label),
+            Inst::CondBr(inst) => write!(
+                f,
+                "br {}, label {}, label {}",
+                inst.cond, inst.label_true, inst.label_false,
+            ),
         }
-        f.write_str(")")
-    }
-}
-
-impl fmt::Display for Ret<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ret {}", self.val)
-    }
-}
-
-impl fmt::Display for UncondBr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "br label {}", self.label)
-    }
-}
-
-impl fmt::Display for CondBr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "br {}, label {}, label {}",
-            self.cond, self.label_true, self.label_false,
-        )
     }
 }

@@ -110,8 +110,10 @@ pub enum Type {
     Struct(Vec<Type>),
     /// Array: `"[" int_lit "x" type "]"`
     Array(usize, Box<Type>),
-    /// Boolean: `i1`
+    /// Boolean: `"i1"`
     Bool,
+    /// Void: `"void"`.
+    Void,
 }
 
 /// A literal value.
@@ -329,6 +331,7 @@ impl fmt::Display for Type {
             }
             Type::Array(n, elem) => write!(f, "[{n} x {elem}]"),
             Type::Bool => f.write_str("i1"),
+            Type::Void => f.write_str("void"),
         }
     }
 }
