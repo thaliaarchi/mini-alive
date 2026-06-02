@@ -105,15 +105,8 @@ impl<'s> FuncBuilder<'s> {
             Var::Numeric(n) => {
                 let resolved = ResolvedVar::Numeric(n);
                 if n < self.next_num {
-                    let err = VarError {
-                        var: resolved,
-                        kind: VarErrorKind::NonIncreasingNumeric { min: self.next_num },
-                    };
-                    return Err(Error {
-                        detail: err.into(),
-                        span,
-                        src: self.src,
-                    });
+                    let err = VarErrorKind::NonIncreasingNumeric { min: self.next_num };
+                    return Err(self.err(resolved, err, span));
                 }
                 self.next_num = n + 1;
                 resolved
@@ -127,37 +120,22 @@ impl<'s> FuncBuilder<'s> {
             Entry::Occupied(entry) => {
                 let def = entry.into_mut();
                 if def.defined {
-                    let err = VarError {
-                        var: resolved,
-                        kind: VarErrorKind::Redefined {
-                            first_span: def.span,
-                        },
+                    let err = VarErrorKind::Redefined {
+                        first_span: def.span,
                     };
-                    return Err(Error {
-                        detail: err.into(),
-                        span,
-                        src: self.src,
-                    });
+                    return Err(self.err(resolved, err, span));
                 }
                 if def.kind != kind {
-                    let err = VarError {
-                        var: resolved,
-                        kind: VarErrorKind::KindMismatch {
-                            kind,
-                            def_kind: def.kind,
-                            def_span: def.span,
-                        },
+                    let err = VarErrorKind::KindMismatch {
+                        kind,
+                        def_kind: def.kind,
+                        def_span: def.span,
                     };
-                    return Err(Error {
-                        detail: err.into(),
-                        span,
-                        src: self.src,
-                    });
+                    return Err(self.err(resolved, err, span));
                 }
                 self.undef_count -= 1;
                 def.defined = true;
                 def.span = span;
-                Ok(LocalVar(resolved))
             }
             Entry::Vacant(entry) => {
                 entry.insert(Def {
@@ -165,9 +143,9 @@ impl<'s> FuncBuilder<'s> {
                     defined: true,
                     span,
                 });
-                Ok(LocalVar(resolved))
             }
         }
+        Ok(LocalVar(resolved))
     }
 
     /// Resolves the variable for a reference.
@@ -186,21 +164,13 @@ impl<'s> FuncBuilder<'s> {
             Entry::Occupied(entry) => {
                 let def = entry.into_mut();
                 if def.kind != kind {
-                    let err = VarError {
-                        var: resolved,
-                        kind: VarErrorKind::KindMismatch {
-                            kind,
-                            def_kind: def.kind,
-                            def_span: def.span,
-                        },
+                    let err = VarErrorKind::KindMismatch {
+                        kind,
+                        def_kind: def.kind,
+                        def_span: def.span,
                     };
-                    return Err(Error {
-                        detail: err.into(),
-                        span,
-                        src: self.src,
-                    });
+                    return Err(self.err(resolved, err, span));
                 }
-                Ok(LocalVar(resolved))
             }
             Entry::Vacant(entry) => {
                 self.undef_count += 1;
@@ -209,9 +179,9 @@ impl<'s> FuncBuilder<'s> {
                     defined: false,
                     span,
                 });
-                Ok(LocalVar(resolved))
             }
         }
+        Ok(LocalVar(resolved))
     }
 
     /// Finishes building the function and emits any remaining errors.
@@ -227,15 +197,7 @@ impl<'s> FuncBuilder<'s> {
         else {
             unreachable!();
         };
-        let err = VarError {
-            var,
-            kind: VarErrorKind::Undefined { kind: def.kind },
-        };
-        Err(Error {
-            detail: err.into(),
-            span: def.span,
-            src: self.src,
-        })
+        Err(self.err(var, VarErrorKind::Undefined { kind: def.kind }, def.span))
     }
 
     /// Resets the builder, to start building another function.
@@ -244,5 +206,13 @@ impl<'s> FuncBuilder<'s> {
         self.names.clear();
         self.next_num = 0;
         self.undef_count = 0;
+    }
+
+    fn err(&mut self, var: ResolvedVar<'s>, err: VarErrorKind, span: Span) -> Error<'s> {
+        Error {
+            detail: VarError { var, kind: err }.into(),
+            span,
+            src: self.src,
+        }
     }
 }
