@@ -102,15 +102,15 @@ impl<'s> Parser<'s> {
                 }
                 let inst = self.parse_inst(&mut builder)?;
                 let is_terminator = inst.is_terminator();
-                insts.push(inst);
+                insts.push(builder.insert_inst(inst));
                 if is_terminator {
                     break;
                 }
             }
             bbs.push(BBlock { label, insts });
         }
-        builder.finish()?;
-        Ok(Func { proto, bbs })
+        let arena = builder.finish()?;
+        Ok(Func { proto, bbs, arena })
     }
 
     /// Parses a function declaration, starting after `"declare"`.

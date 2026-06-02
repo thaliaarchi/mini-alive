@@ -2,14 +2,20 @@
 
 use std::collections::{HashMap, hash_map::Entry};
 
-use crate::syntax::{
-    ast::{LocalVar, ResolvedVar, Var},
-    error::{Error, VarError, VarErrorKind, VarKind},
-    source::{SourceFile, Span},
+use crate::{
+    arena::{Arena, Id},
+    syntax::{
+        ast::{LocalVar, ResolvedVar, Var},
+        error::{Error, VarError, VarErrorKind, VarKind},
+        inst::InstData,
+        source::{SourceFile, Span},
+    },
 };
 
 /// Function-local name resolution and numeric ID assignment.
 pub(super) struct FuncBuilder<'s> {
+    /// The instructions in the function, not associated with basic blocks.
+    arena: Arena<InstData<'s>>,
     /// A mapping from variables to definitions.
     names: HashMap<ResolvedVar<'s>, Def>,
     /// The next ID to use for numeric variables.
@@ -34,11 +40,18 @@ impl<'s> FuncBuilder<'s> {
     /// Constructs an empty name map.
     pub(super) fn new(src: &'s SourceFile) -> Self {
         FuncBuilder {
+            arena: Arena::new(),
             names: HashMap::new(),
             next_num: 0,
             undef_count: 0,
             src,
         }
+    }
+
+    /// Inserts an instruction into the arena, not associated with a basic
+    /// block.
+    pub(super) fn insert_inst(&mut self, inst: InstData<'s>) -> Id<InstData<'s>> {
+        self.arena.insert(inst)
     }
 
     /// Resolves the variable for a basic block definition.
@@ -199,9 +212,9 @@ impl<'s> FuncBuilder<'s> {
     }
 
     /// Finishes building the function and emits any remaining errors.
-    pub(super) fn finish(&self) -> Result<(), Error<'s>> {
+    pub(super) fn finish(self) -> Result<Arena<InstData<'s>>, Error<'s>> {
         if self.undef_count == 0 {
-            return Ok(());
+            return Ok(self.arena);
         }
         let Some((&var, def)) = self
             .names

@@ -2,7 +2,11 @@
 
 use std::fmt;
 
-use crate::{syntax::inst::InstData, util::make_enum};
+use crate::{
+    arena::{Arena, Id},
+    syntax::inst::InstData,
+    util::make_enum,
+};
 
 // TODO:
 // - Implement type checking: it needs unification for 0-element arrays and
@@ -31,6 +35,8 @@ pub struct Func<'s> {
     pub proto: FuncProto<'s>,
     /// The basic blocks.
     pub bbs: Vec<BBlock<'s>>,
+    /// The instructions, in an arena not associated with a basic block.
+    pub arena: Arena<InstData<'s>>,
 }
 
 /// A function prototype: `"declare" type global_name params`.
@@ -50,7 +56,7 @@ pub struct BBlock<'s> {
     /// The basic block label.
     pub label: LocalVar<'s>,
     /// The instructions in the basic block.
-    pub insts: Vec<InstData<'s>>,
+    pub insts: Vec<Id<InstData<'s>>>,
 }
 
 /// A global variable (`@`).
@@ -231,7 +237,10 @@ impl fmt::Display for Func<'_> {
                 f.write_str("\n")?;
             }
             first = false;
-            bb.fmt(f)?;
+            writeln!(f, "{}:", bb.label.0)?;
+            for &inst in &bb.insts {
+                writeln!(f, "  {}", self.arena[inst])?;
+            }
         }
         f.write_str("}\n")
     }
@@ -255,16 +264,6 @@ impl FuncProto<'_> {
             write!(f, "{ty} {name}")?;
         }
         f.write_str(")")
-    }
-}
-
-impl fmt::Display for BBlock<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}:", self.label.0)?;
-        for inst in &self.insts {
-            writeln!(f, "  {inst}")?;
-        }
-        Ok(())
     }
 }
 
