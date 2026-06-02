@@ -12,7 +12,7 @@ use crate::syntax::{
 // - Handle secondary spans for variable errors.
 
 /// An error.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Error<'s> {
     /// The details of the error.
     pub detail: ErrorDetail<'s>,
@@ -185,6 +185,22 @@ impl<'s> From<VarError<'s>> for ErrorDetail<'s> {
     }
 }
 
+impl error::Error for Error<'_> {}
+
+impl fmt::Debug for Error<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            f.debug_struct("Error")
+                .field("detail", &self.detail)
+                .field("span", &self.span)
+                .field("src", &self.src)
+                .finish()
+        } else {
+            fmt::Display::fmt(&self, f)
+        }
+    }
+}
+
 impl fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Error: ")?;
@@ -348,5 +364,3 @@ impl fmt::Display for VarKind {
         })
     }
 }
-
-impl error::Error for Error<'_> {}
