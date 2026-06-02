@@ -3,7 +3,7 @@
 use std::{error, fmt, num::ParseIntError};
 
 use crate::syntax::{
-    ast::ResolvedVar,
+    ast::{ResolvedVar, Type},
     lex::{Token, TokenSet},
     source::{SourceFile, Span},
 };
@@ -63,6 +63,8 @@ pub enum SyntaxErrorKind {
     UnexpectedResult,
     /// Unknown instruction.
     UnsupportedInst,
+    /// Invalid aggregate index.
+    AggregateIndex,
     /// Basic block missing terminator.
     MissingTerminator,
     /// Invalid Boolean conditional.
@@ -148,19 +150,28 @@ pub enum VarErrorKind {
         /// The span of the first definition.
         first_span: Span,
     },
-    /// Variable references definition of another kind.
-    KindMismatch {
-        /// The kind of the variable.
-        kind: VarKind,
-        /// The kind of the definition.
-        def_kind: VarKind,
-        /// The span of the definition.
-        def_span: Span,
-    },
     /// Variable is less than next available ID.
     NonIncreasingNumeric {
         /// The next available ID.
         min: u32,
+    },
+    /// Variable references definition of another kind.
+    KindMismatch {
+        /// The kind of the variable.
+        kind: VarKind,
+        /// The kind of the definition or first use.
+        def_kind: VarKind,
+        /// The span of the definition or first use.
+        def_span: Span,
+    },
+    /// Variable references definition of another type.
+    TypeMismatch {
+        /// The type of the variable.
+        ty: Type,
+        /// The kind of the definition or first use.
+        def_ty: Type,
+        /// The span of the definition or first use.
+        def_span: Span,
     },
 }
 
@@ -299,6 +310,7 @@ impl fmt::Display for SyntaxErrorKind {
                 write!(f, "unexpected result value on void instruction")
             }
             SyntaxErrorKind::UnsupportedInst => write!(f, "unsupported instruction"),
+            SyntaxErrorKind::AggregateIndex => write!(f, "invalid aggregate index"),
             SyntaxErrorKind::MissingTerminator => write!(f, "basic block missing terminator"),
             SyntaxErrorKind::Cond => write!(f, "invalid Boolean conditional"),
         }
@@ -341,16 +353,17 @@ impl fmt::Display for SyntaxContext {
 impl fmt::Display for VarError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let var = &self.var;
-        match self.kind {
+        match &self.kind {
             VarErrorKind::Undefined { kind } => write!(f, "undefined {kind} %{var}"),
             VarErrorKind::Redefined { .. } => write!(f, "redefined %{var}"),
-            VarErrorKind::KindMismatch {
-                def_kind: found,
-                kind: expected,
-                ..
-            } => write!(f, "%{var} references {found}, but expected {expected}"),
             VarErrorKind::NonIncreasingNumeric { min } => {
                 write!(f, "%{var} is less than the next available ID %{min}")
+            }
+            VarErrorKind::KindMismatch { kind, def_kind, .. } => {
+                write!(f, "%{var} is used as a {kind}, but expected a {def_kind}")
+            }
+            VarErrorKind::TypeMismatch { ty, def_ty, .. } => {
+                write!(f, "%{var} is used with type {ty}, but expected {def_ty}")
             }
         }
     }
@@ -359,7 +372,7 @@ impl fmt::Display for VarError<'_> {
 impl fmt::Display for VarKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            VarKind::BBlock => "basic block",
+            VarKind::BBlock => "label",
             VarKind::Value => "value",
         })
     }

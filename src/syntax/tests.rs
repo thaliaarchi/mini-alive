@@ -96,9 +96,9 @@ insertvalue {i16, i16} {i16 4, i16 2}, i16 7, 1
 alloca i16, 4
 load i16, ptr %p
 store i16 %0, ptr %p
-icmp eq i16 %0, 0
-phi i16 [ %0, %1 ], [ 0, %2 ]
-call i16 @f(i16 %0)
+icmp eq i16 %1, 0
+phi i16 [ %1, %2 ], [ 0, %3 ]
+call i16 @f(i16 %1)
 ret i16 5
 ret { i16, i16 } { i16 4, i16 2 }
 ret {[3 x i16], {ptr, {}}}
@@ -122,9 +122,9 @@ br i1 %cond, label %t, label %f
             "%0 = alloca i16, 4",
             "%0 = load i16, ptr %p",
             "store i16 %0, ptr %p",
-            "%0 = icmp eq i16 %0, 0",
-            "%0 = phi i16 [ %0, %1 ], [ 0, %2 ]",
-            "%0 = call i16 @f(i16 %0)",
+            "%0 = icmp eq i16 %1, 0",
+            "%0 = phi i16 [ %1, %2 ], [ 0, %3 ]",
+            "%0 = call i16 @f(i16 %1)",
             "ret i16 5",
             "ret {i16, i16} {i16 4, i16 2}",
             "ret {[3 x i16], {ptr, {}}} {[3 x i16] [i16 1, i16 2, i16 3], {ptr, {}} {ptr null, {} {}}}",
@@ -280,6 +280,140 @@ fn unnamed_params() {
 }
 
 #[test]
+fn typechecking() {
+    let ok_tests = [
+        "\
+define i16 @f() {
+entry:
+  %p = alloca i16, 1
+  store i16 0, ptr %p
+  %x = load i16, ptr %p
+  ret i16 %x
+}
+",
+        "\
+define i16 @f(i16 %x) {
+entry:
+  %0 = add i16 %x, 1
+  %1 = add i16 %0, %x
+  ret i16 %1
+}
+",
+        "\
+define ptr @f() {
+entry:
+  %x = extractvalue {i16, ptr} {i16 1, ptr null}, 1
+  ret ptr %x
+}
+",
+        "\
+define i16 @f() {
+entry:
+  %x = extractvalue [2 x i16] [i16 1, i16 2], 1
+  ret i16 %x
+}
+",
+        "\
+define ptr @f() {
+entry:
+  %x = extractvalue [2 x {i16, ptr}] [{i16, ptr} {i16 1, ptr null}, {i16, ptr} {i16 2, ptr null}], 1, 1
+  ret ptr %x
+}
+",
+    ];
+    for src in ok_tests {
+        let src = SourceFile::new(src.into(), "test.ll".into());
+        let module = Parser::new(&src).parse_module().unwrap();
+        assert_eq!(module.to_string(), src.text());
+    }
+
+    let err_tests = [
+        (
+            "\
+define i16 @f() {
+entry:
+  %p = alloca i16, 1
+  %x = load i16, i16 %p
+  ret i16 %x
+}
+",
+            "\
+Error: %p is used with type i16, but expected ptr
+ --> errs.ll:4:22-4:24
+  |
+4 |   %x = load i16, i16 %p
+  |                      ^^
+  |
+",
+        ),
+        (
+            "\
+define i16 @f() {
+entry:
+  br label %loop
+
+loop:
+  %x = phi i16 [ 0, %entry ], [ %y, %back ]
+  ret i16 %x
+
+back:
+  %y = alloca i16, 1
+  br label %loop
+}
+",
+            "\
+Error: %y is used with type ptr, but expected i16
+  --> errs.ll:10:3-10:5
+   |
+10 |   %y = alloca i16, 1
+   |   ^^
+   |
+",
+        ),
+        (
+            "\
+define i16 @src() {
+  %x = extractvalue {i16} {i16 1}, 1
+  ret i16 %x
+}
+",
+            "\
+Error: invalid aggregate index; found integer literal `1`
+ --> errs.ll:2:36
+  |
+2 |   %x = extractvalue {i16} {i16 1}, 1
+  |                                    ^
+  |
+  = context: parsing an `extractvalue` instruction
+",
+        ),
+        (
+            "\
+define i16 @f() {
+entry:
+  %x = extractvalue [2 x i16] [i16 1, i16 2], 2
+  ret i16 %x
+}
+",
+            "\
+Error: invalid aggregate index; found integer literal `2`
+ --> errs.ll:3:47
+  |
+3 |   %x = extractvalue [2 x i16] [i16 1, i16 2], 2
+  |                                               ^
+  |
+  = context: parsing an `extractvalue` instruction
+",
+        ),
+    ];
+    for (src, diagnostic) in err_tests {
+        let src = SourceFile::new(src.into(), "errs.ll".into());
+        let err = Parser::new(&src).parse_module().unwrap_err();
+        assert_eq!(err.to_string(), diagnostic);
+    }
+}
+
+#[test]
 fn diagnostics() {
     let tests = [
         (
@@ -428,40 +562,6 @@ Error: redefined %x
         ),
         (
             "\
-define i16 @f() {
-entry:
-  br label %bb
-bb:
-  ret i16 %entry
-}
-",
-            "\
-Error: %entry references basic block, but expected value
- --> errs.ll:5:11-5:17
-  |
-5 |   ret i16 %entry
-  |           ^^^^^^
-  |
-",
-        ),
-        (
-            "\
-define i16 @f(i16 %x) {
-entry:
-  br label %x
-}
-",
-            "\
-Error: %x references value, but expected basic block
- --> errs.ll:3:12-3:14
-  |
-3 |   br label %x
-  |            ^^
-  |
-",
-        ),
-        (
-            "\
 define i16 @f(i16 %2) {
 3:
   %1 = add i16 %2, 1
@@ -477,11 +577,44 @@ Error: %1 is less than the next available ID %4
   |
 ",
         ),
+        (
+            "\
+define i16 @f() {
+entry:
+  br label %bb
+bb:
+  ret i16 %entry
+}
+",
+            "\
+Error: %entry is used as a value, but expected a label
+ --> errs.ll:5:11-5:17
+  |
+5 |   ret i16 %entry
+  |           ^^^^^^
+  |
+",
+        ),
+        (
+            "\
+define i16 @f(i16 %x) {
+entry:
+  br label %x
+}
+",
+            "\
+Error: %x is used as a label, but expected a value
+ --> errs.ll:3:12-3:14
+  |
+3 |   br label %x
+  |            ^^
+  |
+",
+        ),
     ];
     for (src, diagnostic) in tests {
         let src = SourceFile::new(src.into(), "errs.ll".into());
-        let mut parser = Parser::new(&src);
-        let err = parser.parse_module().unwrap_err();
+        let err = Parser::new(&src).parse_module().unwrap_err();
         assert_eq!(err.to_string(), diagnostic);
     }
 }

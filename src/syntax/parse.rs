@@ -139,7 +139,7 @@ impl<'s> Parser<'s> {
                 } else {
                     self.expect_local_var()?
                 };
-                let var = self.builder.define_value(var, param_span)?;
+                let var = self.builder.define_value(var, &ty, param_span)?;
                 params.push((ty, var));
                 if self.peek().tok == Token::RParen {
                     break;
@@ -173,9 +173,9 @@ impl<'s> Parser<'s> {
             _ if let Some(arith) = ArithOp::from_str(op.text) => {
                 let _ctx = self.with_ctx(Context::ArithInst);
                 ty = self.parse_type()?;
-                let lhs = self.parse_val()?;
+                let lhs = self.parse_val(&ty)?;
                 self.expect(Token::Comma)?;
-                let rhs = self.parse_val()?;
+                let rhs = self.parse_val(&ty)?;
                 Inst::from(Arith {
                     op: arith,
                     lhs,
@@ -185,9 +185,9 @@ impl<'s> Parser<'s> {
             "extractvalue" => {
                 let _ctx = self.with_ctx(Context::ExtractValueInst);
                 let agg = self.parse_typed_val()?;
-                ty = agg.ty.clone();
                 self.expect(Token::Comma)?;
-                let indices = self.parse_indices()?;
+                let (indices, elem_ty) = self.parse_indices(&agg.ty)?;
+                ty = elem_ty.clone();
                 Inst::from(ExtractValue { agg, indices })
             }
             "insertvalue" => {
@@ -197,7 +197,7 @@ impl<'s> Parser<'s> {
                 self.expect(Token::Comma)?;
                 let val = self.parse_typed_val()?;
                 self.expect(Token::Comma)?;
-                let indices = self.parse_indices()?;
+                let (indices, _) = self.parse_indices(&agg.ty)?;
                 Inst::from(InsertValue { agg, val, indices })
             }
             "alloca" => {
@@ -239,9 +239,9 @@ impl<'s> Parser<'s> {
                     return Err(self.err(cond, ErrorKind::Cond));
                 };
                 let ty = self.parse_type()?;
-                let lhs = self.parse_val()?;
+                let lhs = self.parse_val(&ty)?;
                 self.expect(Token::Comma)?;
-                let rhs = self.parse_val()?;
+                let rhs = self.parse_val(&ty)?;
                 Inst::from(ICmp { cond, ty, lhs, rhs })
             }
             "phi" => {
@@ -250,7 +250,7 @@ impl<'s> Parser<'s> {
                 let mut sources = Vec::new();
                 loop {
                     self.expect(Token::LBracket)?;
-                    let val = self.parse_val()?;
+                    let val = self.parse_val(&ty)?;
                     self.expect(Token::Comma)?;
                     let label = self.expect_label_var()?;
                     self.expect(Token::RBracket)?;
@@ -316,7 +316,7 @@ impl<'s> Parser<'s> {
                 }
                 None => (Var::Unnamed, op.span),
             };
-            Some(self.builder.define_value(result, span)?)
+            Some(self.builder.define_value(result, &ty, span)?)
         } else {
             if let Some(result) = result {
                 return Err(self.err(result, ErrorKind::UnexpectedResult));
@@ -333,15 +333,15 @@ impl<'s> Parser<'s> {
     /// Parses a typed value.
     fn parse_typed_val(&mut self) -> Result<TypedVal<'s>, Error<'s>> {
         let ty = self.parse_type()?;
-        let val = self.parse_val()?;
+        let val = self.parse_val(&ty)?;
         Ok(TypedVal { ty, val })
     }
 
     /// Parses a value.
-    fn parse_val(&mut self) -> Result<Val<'s>, Error<'s>> {
+    fn parse_val(&mut self, ty: &Type) -> Result<Val<'s>, Error<'s>> {
         let _ctx = self.with_ctx(Context::Val);
         if self.peek().tok == Token::LocalVar {
-            Ok(Val::Local(self.expect_value_var()?))
+            Ok(Val::Local(self.expect_value_var(ty)?))
         } else {
             Ok(Val::Lit(self.parse_lit()?))
         }
@@ -436,15 +436,32 @@ impl<'s> Parser<'s> {
     }
 
     /// Parses a sequence of integer indices: `int_lit ("," int_lit)*`
-    fn parse_indices(&mut self) -> Result<Vec<usize>, Error<'s>> {
+    fn parse_indices<'a>(&mut self, ty: &'a Type) -> Result<(Vec<usize>, &'a Type), Error<'s>> {
+        let mut ty = ty;
         let mut indices = vec![];
         loop {
-            indices.push(self.expect_int()?);
+            let lex = self.expect(Token::Int)?;
+            let index = self.parse_int(lex.clone())?;
+            ty = match ty {
+                Type::Struct(fields) => match fields.get(index) {
+                    Some(ty) => ty,
+                    None => return Err(self.err(lex, ErrorKind::AggregateIndex)),
+                },
+                Type::Array(len, elem) => {
+                    if index >= *len {
+                        return Err(self.err(lex, ErrorKind::AggregateIndex));
+                    }
+                    elem
+                }
+                _ => return Err(self.err(lex, ErrorKind::AggregateIndex)),
+            };
+            indices.push(index);
             if self.peek().tok != Token::Comma {
-                return Ok(indices);
+                break;
             }
             self.bump();
         }
+        Ok((indices, ty))
     }
 
     /// Parses an `align` argument for `load` and `store`.
@@ -509,9 +526,9 @@ impl<'s> Parser<'s> {
         Ok((self.parse_var(&lex.text[1..], lex)?, span))
     }
 
-    fn expect_value_var(&mut self) -> Result<LocalVar<'s>, Error<'s>> {
+    fn expect_value_var(&mut self, ty: &Type) -> Result<LocalVar<'s>, Error<'s>> {
         let (var, span) = self.expect_local_var()?;
-        self.builder.use_value(var, span)
+        self.builder.use_value(var, ty, span)
     }
 
     fn expect_label_var(&mut self) -> Result<LocalVar<'s>, Error<'s>> {

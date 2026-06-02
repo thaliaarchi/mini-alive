@@ -8,7 +8,7 @@ use std::{
 use crate::{
     arena::{Arena, Id},
     syntax::{
-        ast::{LocalVar, ResolvedVar, Var},
+        ast::{LocalVar, ResolvedVar, Type, Var},
         error::{Error, VarError, VarErrorKind, VarKind},
         inst::InstData,
         source::{SourceFile, Span},
@@ -32,11 +32,19 @@ pub(super) struct FuncBuilder<'s> {
 /// The definition or first reference of a variable.
 struct Def {
     /// The kind of the definition.
-    kind: VarKind,
+    kind: DefKind,
     /// Whether the variable has been defined or only referenced.
     defined: bool,
     /// The span of the definition or first reference.
     span: Span,
+}
+
+/// The kind of a definition.
+enum DefKind {
+    /// Basic block.
+    BBlock,
+    /// Value (instruction or parameter).
+    Value { ty: Type },
 }
 
 impl<'s> FuncBuilder<'s> {
@@ -63,7 +71,7 @@ impl<'s> FuncBuilder<'s> {
         var: Var<'s>,
         span: Span,
     ) -> Result<LocalVar<'s>, Error<'s>> {
-        self.define_var(var, span, VarKind::BBlock)
+        self.define_var(var, span, DefKind::BBlock)
     }
 
     /// Resolves the variable for a basic block reference.
@@ -72,25 +80,27 @@ impl<'s> FuncBuilder<'s> {
         var: Var<'s>,
         span: Span,
     ) -> Result<LocalVar<'s>, Error<'s>> {
-        self.use_var(var, span, VarKind::BBlock)
+        self.use_var(var, span, DefKind::BBlock)
     }
 
     /// Resolves the variable for a value definition.
     pub(super) fn define_value(
         &mut self,
         var: Var<'s>,
+        ty: &Type,
         span: Span,
     ) -> Result<LocalVar<'s>, Error<'s>> {
-        self.define_var(var, span, VarKind::Value)
+        self.define_var(var, span, DefKind::Value { ty: ty.clone() })
     }
 
     /// Resolves the variable for a value reference.
     pub(super) fn use_value(
         &mut self,
         var: Var<'s>,
+        ty: &Type,
         span: Span,
     ) -> Result<LocalVar<'s>, Error<'s>> {
-        self.use_var(var, span, VarKind::Value)
+        self.use_var(var, span, DefKind::Value { ty: ty.clone() })
     }
 
     /// Resolves the variable for a definition.
@@ -98,7 +108,7 @@ impl<'s> FuncBuilder<'s> {
         &mut self,
         var: Var<'s>,
         span: Span,
-        kind: VarKind,
+        kind: DefKind,
     ) -> Result<LocalVar<'s>, Error<'s>> {
         let resolved = match var {
             Var::Name(name) => ResolvedVar::Name(name),
@@ -125,12 +135,7 @@ impl<'s> FuncBuilder<'s> {
                     };
                     return Err(self.err(resolved, err, span));
                 }
-                if def.kind != kind {
-                    let err = VarErrorKind::KindMismatch {
-                        kind,
-                        def_kind: def.kind,
-                        def_span: def.span,
-                    };
+                if let Err(err) = def.check_kind(kind) {
                     return Err(self.err(resolved, err, span));
                 }
                 self.undef_count -= 1;
@@ -153,7 +158,7 @@ impl<'s> FuncBuilder<'s> {
         &mut self,
         var: Var<'s>,
         span: Span,
-        kind: VarKind,
+        kind: DefKind,
     ) -> Result<LocalVar<'s>, Error<'s>> {
         let resolved = match var {
             Var::Name(name) => ResolvedVar::Name(name),
@@ -162,13 +167,8 @@ impl<'s> FuncBuilder<'s> {
         };
         match self.names.entry(resolved) {
             Entry::Occupied(entry) => {
-                let def = entry.into_mut();
-                if def.kind != kind {
-                    let err = VarErrorKind::KindMismatch {
-                        kind,
-                        def_kind: def.kind,
-                        def_span: def.span,
-                    };
+                let def = &*entry.into_mut();
+                if let Err(err) = def.check_kind(kind) {
                     return Err(self.err(resolved, err, span));
                 }
             }
@@ -197,7 +197,10 @@ impl<'s> FuncBuilder<'s> {
         else {
             unreachable!();
         };
-        Err(self.err(var, VarErrorKind::Undefined { kind: def.kind }, def.span))
+        let err = VarErrorKind::Undefined {
+            kind: def.kind.var_kind(),
+        };
+        Err(self.err(var, err, def.span))
     }
 
     /// Resets the builder, to start building another function.
@@ -213,6 +216,41 @@ impl<'s> FuncBuilder<'s> {
             detail: VarError { var, kind: err }.into(),
             span,
             src: self.src,
+        }
+    }
+}
+
+impl DefKind {
+    /// Gets the tag for this kind.
+    fn var_kind(&self) -> VarKind {
+        match self {
+            DefKind::BBlock => VarKind::BBlock,
+            DefKind::Value { .. } => VarKind::Value,
+        }
+    }
+}
+
+impl Def {
+    /// Validates that a use or definition matches the stored kind.
+    fn check_kind(&self, kind: DefKind) -> Result<(), VarErrorKind> {
+        match (&self.kind, kind) {
+            (DefKind::Value { ty: def_ty }, DefKind::Value { ty }) => {
+                if def_ty == &ty {
+                    Ok(())
+                } else {
+                    Err(VarErrorKind::TypeMismatch {
+                        ty,
+                        def_ty: def_ty.clone(),
+                        def_span: self.span,
+                    })
+                }
+            }
+            (DefKind::BBlock, DefKind::BBlock) => Ok(()),
+            (_, kind) => Err(VarErrorKind::KindMismatch {
+                kind: kind.var_kind(),
+                def_kind: self.kind.var_kind(),
+                def_span: self.span,
+            }),
         }
     }
 }
