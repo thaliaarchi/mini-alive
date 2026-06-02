@@ -1,6 +1,5 @@
 use crate::syntax::{
     ast::{Lit, Type},
-    build::FuncBuilder,
     parse::Parser,
     source::SourceFile,
 };
@@ -111,8 +110,8 @@ br i1 %cond, label %t, label %f
     let mut parser = Parser::new(&src);
     let mut insts = Vec::new();
     while !parser.eof() {
-        let mut builder = FuncBuilder::new(&src);
-        insts.push(parser.parse_inst(&mut builder).unwrap().to_string());
+        parser.reset_builder();
+        insts.push(parser.parse_inst().unwrap().to_string());
     }
     assert_eq!(
         insts,

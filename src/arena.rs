@@ -35,6 +35,11 @@ impl<T> Arena<T> {
     pub fn iter_ids(&self) -> IdIter<T> {
         Id::iter(Id::from_index(0)..Id::from_index(self.values.len()))
     }
+
+    /// Clears the arena, retaining the allocation.
+    pub fn clear(&mut self) {
+        self.values.clear();
+    }
 }
 
 impl<T> Index<Id<T>> for Arena<T> {

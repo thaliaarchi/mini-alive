@@ -1,6 +1,9 @@
 //! Function building.
 
-use std::collections::{HashMap, hash_map::Entry};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    mem,
+};
 
 use crate::{
     arena::{Arena, Id},
@@ -212,9 +215,9 @@ impl<'s> FuncBuilder<'s> {
     }
 
     /// Finishes building the function and emits any remaining errors.
-    pub(super) fn finish(self) -> Result<Arena<InstData<'s>>, Error<'s>> {
+    pub(super) fn finish(&mut self) -> Result<Arena<InstData<'s>>, Error<'s>> {
         if self.undef_count == 0 {
-            return Ok(self.arena);
+            return Ok(mem::take(&mut self.arena));
         }
         let Some((&var, def)) = self
             .names
@@ -233,5 +236,13 @@ impl<'s> FuncBuilder<'s> {
             span: def.span,
             src: self.src,
         })
+    }
+
+    /// Resets the builder, to start building another function.
+    pub(super) fn reset(&mut self) {
+        self.arena.clear();
+        self.names.clear();
+        self.next_num = 0;
+        self.undef_count = 0;
     }
 }
