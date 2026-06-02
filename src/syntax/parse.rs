@@ -1,6 +1,6 @@
 //! Parsing Mini-Alive source.
 
-use std::{cell::Cell, num::ParseIntError, str::FromStr};
+use std::{cell::Cell, marker::PhantomData, num::ParseIntError, str::FromStr};
 
 use crate::syntax::{
     ast::{
@@ -10,8 +10,8 @@ use crate::syntax::{
     build::FuncBuilder,
     error::{Error, SyntaxContext as Context, SyntaxError, SyntaxErrorKind as ErrorKind},
     inst::{
-        Alloca, Arith, ArithOp, Call, CondBr, ExtractValue, ICmp, InsertValue, Inst, Load, Phi,
-        Ret, Store, UncondBr,
+        Alloca, Arith, ArithOp, Call, CondBr, ExtractValue, ICmp, InsertValue, Inst, InstData,
+        Load, Phi, Ret, Store, UncondBr,
     },
     lex::{Lexeme, Lexer, Token, TokenSet, token_set},
     source::{SourceFile, Span},
@@ -160,7 +160,7 @@ impl<'s> Parser<'s> {
     pub(super) fn parse_inst(
         &mut self,
         builder: &mut FuncBuilder<'s>,
-    ) -> Result<Inst<'s>, Error<'s>> {
+    ) -> Result<InstData<'s>, Error<'s>> {
         let _ctx = self.with_ctx(Context::Inst);
         let result = self.next_if(Token::LocalVar);
         if result.is_some() {
@@ -171,85 +171,68 @@ impl<'s> Parser<'s> {
             let _ctx = self.with_ctx(Context::InstOp);
             self.expect(Token::Ident)?
         };
-        if let Some(arith) = ArithOp::from_str(op.text) {
-            let result = self.parse_result(result, op.span, builder)?;
-            let ty = self.parse_type()?;
-            let lhs = self.parse_val(builder)?;
-            self.expect(Token::Comma)?;
-            let rhs = self.parse_val(builder)?;
-            return Ok(Inst::from(Arith {
-                result,
-                op: arith,
-                ty,
-                lhs,
-                rhs,
-            }));
-        }
-        match op.text {
+        let inst = match op.text {
+            _ if let Some(arith) = ArithOp::from_str(op.text) => {
+                let _ctx = self.with_ctx(Context::ArithInst);
+                let ty = self.parse_type()?;
+                let lhs = self.parse_val(builder)?;
+                self.expect(Token::Comma)?;
+                let rhs = self.parse_val(builder)?;
+                Inst::from(Arith {
+                    op: arith,
+                    ty,
+                    lhs,
+                    rhs,
+                })
+            }
             "extractvalue" => {
                 let _ctx = self.with_ctx(Context::ExtractValueInst);
-                let result = self.parse_result(result, op.span, builder)?;
                 let agg = self.parse_typed_val(builder)?;
                 self.expect(Token::Comma)?;
                 let indices = self.parse_indices()?;
-                Ok(Inst::from(ExtractValue {
-                    result,
-                    agg,
-                    indices,
-                }))
+                Inst::from(ExtractValue { agg, indices })
             }
             "insertvalue" => {
                 let _ctx = self.with_ctx(Context::InsertValueInst);
-                let result = self.parse_result(result, op.span, builder)?;
                 let agg = self.parse_typed_val(builder)?;
                 self.expect(Token::Comma)?;
                 let val = self.parse_typed_val(builder)?;
                 self.expect(Token::Comma)?;
                 let indices = self.parse_indices()?;
-                Ok(Inst::from(InsertValue {
-                    result,
-                    agg,
-                    val,
-                    indices,
-                }))
+                Inst::from(InsertValue { agg, val, indices })
             }
             "alloca" => {
                 let _ctx = self.with_ctx(Context::AllocaInst);
-                let result = self.parse_result(result, op.span, builder)?;
                 let ty = self.parse_type()?;
                 let count = if self.next_if(Token::Comma).is_some() {
                     Some(self.expect_int()?)
                 } else {
                     None
                 };
-                Ok(Inst::from(Alloca { result, ty, count }))
+                Inst::from(Alloca {
+                    ty,
+                    count,
+                    lifetime: PhantomData,
+                })
             }
             "load" => {
                 let _ctx = self.with_ctx(Context::LoadInst);
-                let result = self.parse_result(result, op.span, builder)?;
                 let ty = self.parse_type()?;
                 self.expect(Token::Comma)?;
                 let ptr = self.parse_typed_val(builder)?;
                 let align = self.parse_align()?;
-                Ok(Inst::from(Load {
-                    result,
-                    ty,
-                    ptr,
-                    align,
-                }))
+                Inst::from(Load { ty, ptr, align })
             }
             "store" => {
                 let _ctx = self.with_ctx(Context::StoreInst);
-                self.forbid_result(result)?;
                 let val = self.parse_typed_val(builder)?;
                 self.expect(Token::Comma)?;
                 let ptr = self.parse_typed_val(builder)?;
                 let align = self.parse_align()?;
-                Ok(Inst::from(Store { val, ptr, align }))
+                Inst::from(Store { val, ptr, align })
             }
             "icmp" => {
                 let _ctx = self.with_ctx(Context::ICmpInst);
-                let result = self.parse_result(result, op.span, builder)?;
                 let cond = self.expect(Token::Ident)?;
                 let Some(cond) = Cond::from_str(cond.text) else {
                     return Err(self.err(cond, ErrorKind::Cond));
@@ -258,17 +241,10 @@ impl<'s> Parser<'s> {
                 let lhs = self.parse_val(builder)?;
                 self.expect(Token::Comma)?;
                 let rhs = self.parse_val(builder)?;
-                Ok(Inst::from(ICmp {
-                    result,
-                    cond,
-                    ty,
-                    lhs,
-                    rhs,
-                }))
+                Inst::from(ICmp { cond, ty, lhs, rhs })
             }
             "phi" => {
                 let _ctx = self.with_ctx(Context::PhiInst);
-                let result = self.parse_result(result, op.span, builder)?;
                 let ty = self.parse_type()?;
                 let mut sources = Vec::new();
                 loop {
@@ -282,15 +258,10 @@ impl<'s> Parser<'s> {
                         break;
                     }
                 }
-                Ok(Inst::from(Phi {
-                    result,
-                    ty,
-                    sources,
-                }))
+                Inst::from(Phi { ty, sources })
             }
             "call" => {
                 let _ctx = self.with_ctx(Context::CallInst);
-                let result = self.parse_result(result, op.span, builder)?;
                 let ret_ty = self.parse_type()?;
                 let func = self.expect_global_var()?;
                 self.expect(Token::LParen)?;
@@ -305,27 +276,20 @@ impl<'s> Parser<'s> {
                     }
                 }
                 self.expect(Token::RParen)?;
-                Ok(Inst::from(Call {
-                    result,
-                    ret_ty,
-                    func,
-                    args,
-                }))
+                Inst::from(Call { ret_ty, func, args })
             }
             "ret" => {
                 let _ctx = self.with_ctx(Context::RetInst);
-                self.forbid_result(result)?;
                 let val = self.parse_typed_val(builder)?;
-                Ok(Inst::from(Ret { val }))
+                Inst::from(Ret { val })
             }
             "br" => {
                 let _ctx = self.with_ctx(Context::BrInst);
-                self.forbid_result(result)?;
                 let peek = self.peek();
                 if peek.tok == Token::Ident && peek.text == "label" {
                     self.bump();
                     let label = self.expect_label_var(builder)?;
-                    Ok(Inst::from(UncondBr { label }))
+                    Inst::from(UncondBr { label })
                 } else {
                     let cond = self.parse_typed_val(builder)?;
                     self.expect(Token::Comma)?;
@@ -334,15 +298,31 @@ impl<'s> Parser<'s> {
                     self.expect(Token::Comma)?;
                     self.expect_ident("label")?;
                     let label_false = self.expect_label_var(builder)?;
-                    Ok(Inst::from(CondBr {
+                    Inst::from(CondBr {
                         cond,
                         label_true,
                         label_false,
-                    }))
+                    })
                 }
             }
-            _ => Err(self.err(op, ErrorKind::UnsupportedInst)),
-        }
+            _ => return Err(self.err(op, ErrorKind::UnsupportedInst)),
+        };
+        let result = if inst.is_value() {
+            let (result, span) = match result {
+                Some(result) => {
+                    let span = result.span;
+                    (self.parse_var(&result.text[1..], result)?, span)
+                }
+                None => (Var::Unnamed, op.span),
+            };
+            Some(builder.define_value(result, span)?)
+        } else {
+            if let Some(result) = result {
+                return Err(self.err(result, ErrorKind::UnexpectedResult));
+            }
+            None
+        };
+        Ok(InstData { inst, name: result })
     }
 
     /// Parses a typed value.
@@ -578,30 +558,6 @@ impl<'s> Parser<'s> {
         lex.text
             .parse::<T>()
             .map_err(|err| self.err(lex, ErrorKind::IntLit(err)))
-    }
-
-    fn parse_result(
-        &self,
-        result: Option<Lexeme<'s>>,
-        op_span: Span,
-        builder: &mut FuncBuilder<'s>,
-    ) -> Result<LocalVar<'s>, Error<'s>> {
-        let (result, span) = match result {
-            Some(result) => {
-                debug_assert_eq!(result.tok, Token::LocalVar);
-                let span = result.span;
-                (self.parse_var(&result.text[1..], result)?, span)
-            }
-            None => (Var::Unnamed, op_span),
-        };
-        builder.define_value(result, span)
-    }
-
-    fn forbid_result(&self, result: Option<Lexeme<'s>>) -> Result<(), Error<'s>> {
-        match result {
-            Some(result) => Err(self.err(result, ErrorKind::UnexpectedResult)),
-            None => Ok(()),
-        }
     }
 
     fn err(&self, lex: Lexeme<'s>, kind: ErrorKind) -> Error<'s> {

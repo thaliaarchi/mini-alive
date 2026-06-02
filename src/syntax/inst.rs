@@ -1,11 +1,25 @@
 //! Syntax nodes for instructions.
 
-use std::fmt;
+use std::{
+    fmt,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+};
 
 use crate::{
     syntax::ast::{Cond, GlobalVar, LocalVar, Type, TypedVal, Val},
     util::make_enum,
 };
+
+/// An instruction and associated metadata.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstData<'s> {
+    /// The instruction.
+    pub inst: Inst<'s>,
+    /// The name of the SSA value produced by this instruction. Present iff this
+    /// is a value instruction.
+    pub name: Option<LocalVar<'s>>,
+}
 
 /// An instruction.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,18 +95,9 @@ make_enum! {
     Xor => "xor",
 }
 
-/// Common accesses for instructions.
-pub trait InstData<'s> {
-    /// Returns the SSA value name of the result, if this instruction produces a
-    /// value.
-    fn result(&self) -> Option<&LocalVar<'s>>;
-}
-
 /// Arithmetic operation: `(local_var "=")? arith int_ty val "," val`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Arith<'s> {
-    /// The result SSA value name.
-    pub result: LocalVar<'s>,
     /// The arithmetic operation.
     pub op: ArithOp,
     /// The type of the LHS and RHS.
@@ -106,8 +111,6 @@ pub struct Arith<'s> {
 /// Aggregate element access: `(local_var "=")? "extractvalue" struct_ty val "," int_lit ("," int_lit)*`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExtractValue<'s> {
-    /// The result SSA value name.
-    pub result: LocalVar<'s>,
     /// The struct.
     pub agg: TypedVal<'s>,
     /// The indices of the element to access.
@@ -117,8 +120,6 @@ pub struct ExtractValue<'s> {
 /// Aggregate element write: `(local_var "=")? "insertvalue" struct_ty val "," type val "," int_lit ("," int_lit)*`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InsertValue<'s> {
-    /// The result SSA value name.
-    pub result: LocalVar<'s>,
     /// The struct.
     pub agg: TypedVal<'s>,
     /// The value to write to the element.
@@ -130,19 +131,17 @@ pub struct InsertValue<'s> {
 /// Stack allocation: `(local_var "=")? "alloca" type ("," int_ty val)?`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Alloca<'s> {
-    /// The result SSA value name.
-    pub result: LocalVar<'s>,
     /// The type of the allocated elements.
     pub ty: Type,
     /// The number of elements.
     pub count: Option<usize>,
+    /// The lifetime of the source.
+    pub lifetime: PhantomData<&'s str>,
 }
 
 /// Memory load: `(local_var "=")? "load" type "," ptr_ty val ("," "align" int_lit)?`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Load<'s> {
-    /// The result SSA value name.
-    pub result: LocalVar<'s>,
     /// The type to load as.
     pub ty: Type,
     /// The address to load from.
@@ -165,8 +164,6 @@ pub struct Store<'s> {
 /// Integer comparison: `(local_var "=")? "icmp" cond type val "," val`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ICmp<'s> {
-    /// The result SSA value name.
-    pub result: LocalVar<'s>,
     /// The Boolean conditional.
     pub cond: Cond,
     /// The type of the LHS and RHS.
@@ -180,8 +177,6 @@ pub struct ICmp<'s> {
 /// Phi: `(local_var "=")? "phi" type "[" val "," local_var "]" ("," "[" val "," local_var "]")*`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Phi<'s> {
-    /// The result SSA value name.
-    pub result: LocalVar<'s>,
     /// The type of the value.
     pub ty: Type,
     /// A value for each predecessor basic block.
@@ -191,8 +186,6 @@ pub struct Phi<'s> {
 /// Function call: `(local_var "=")? "call" type global_var "(" (arg ("," arg)*)? ")"`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Call<'s> {
-    /// The result SSA value name.
-    pub result: LocalVar<'s>,
     /// The type of the return value.
     pub ret_ty: Type,
     /// The function to call.
@@ -226,10 +219,38 @@ pub struct CondBr<'s> {
     pub label_false: LocalVar<'s>,
 }
 
+impl<'s> Deref for InstData<'s> {
+    type Target = Inst<'s>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inst
+    }
+}
+impl<'s> DerefMut for InstData<'s> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inst
+    }
+}
+
 impl Inst<'_> {
     /// Returns whether the instruction is a basic block terminator.
     pub fn is_terminator(&self) -> bool {
         matches!(self, Inst::Ret(_) | Inst::UncondBr(_) | Inst::CondBr(_))
+    }
+
+    /// Returns whether the instruction produces a value.
+    pub fn is_value(&self) -> bool {
+        matches!(
+            self,
+            Inst::Arith(_)
+                | Inst::ExtractValue(_)
+                | Inst::InsertValue(_)
+                | Inst::Alloca(_)
+                | Inst::Load(_)
+                | Inst::ICmp(_)
+                | Inst::Phi(_)
+                | Inst::Call(_)
+        )
     }
 }
 
@@ -255,64 +276,12 @@ impl_from_for_inst! {
     CondBr,
 }
 
-impl<'s> InstData<'s> for Arith<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        Some(&self.result)
-    }
-}
-impl<'s> InstData<'s> for ExtractValue<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        Some(&self.result)
-    }
-}
-impl<'s> InstData<'s> for InsertValue<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        Some(&self.result)
-    }
-}
-impl<'s> InstData<'s> for Alloca<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        Some(&self.result)
-    }
-}
-impl<'s> InstData<'s> for Load<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        Some(&self.result)
-    }
-}
-impl<'s> InstData<'s> for Store<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        None
-    }
-}
-impl<'s> InstData<'s> for ICmp<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        Some(&self.result)
-    }
-}
-impl<'s> InstData<'s> for Phi<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        Some(&self.result)
-    }
-}
-impl<'s> InstData<'s> for Call<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        Some(&self.result)
-    }
-}
-impl<'s> InstData<'s> for Ret<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        None
-    }
-}
-impl<'s> InstData<'s> for UncondBr<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        None
-    }
-}
-impl<'s> InstData<'s> for CondBr<'s> {
-    fn result(&self) -> Option<&LocalVar<'s>> {
-        None
+impl fmt::Display for InstData<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{name} = ")?;
+        }
+        self.inst.fmt(f)
     }
 }
 
@@ -338,14 +307,12 @@ impl fmt::Display for Inst<'_> {
 
 impl fmt::Display for Arith<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_result(f, &self.result)?;
         write!(f, "{} {} {}, {}", self.op, self.ty, self.lhs, self.rhs)
     }
 }
 
 impl fmt::Display for ExtractValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_result(f, &self.result)?;
         write!(f, "extractvalue {}", self.agg)?;
         for &n in &self.indices {
             write!(f, ", {n}")?;
@@ -356,7 +323,6 @@ impl fmt::Display for ExtractValue<'_> {
 
 impl fmt::Display for InsertValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_result(f, &self.result)?;
         write!(f, "insertvalue {}, {}", self.agg, self.val)?;
         for &n in &self.indices {
             write!(f, ", {n}")?;
@@ -367,7 +333,6 @@ impl fmt::Display for InsertValue<'_> {
 
 impl fmt::Display for Alloca<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_result(f, &self.result)?;
         write!(f, "alloca {}", self.ty)?;
         if let Some(elems) = self.count {
             write!(f, ", {elems}")?;
@@ -378,7 +343,6 @@ impl fmt::Display for Alloca<'_> {
 
 impl fmt::Display for Load<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_result(f, &self.result)?;
         write!(f, "load {}, {}", self.ty, self.ptr)
     }
 }
@@ -391,7 +355,6 @@ impl fmt::Display for Store<'_> {
 
 impl fmt::Display for ICmp<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_result(f, &self.result)?;
         write!(
             f,
             "icmp {} {} {}, {}",
@@ -402,7 +365,6 @@ impl fmt::Display for ICmp<'_> {
 
 impl fmt::Display for Phi<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_result(f, &self.result)?;
         write!(f, "phi {}", self.ty)?;
         let mut first = true;
         for (val, pred) in &self.sources {
@@ -418,7 +380,6 @@ impl fmt::Display for Phi<'_> {
 
 impl fmt::Display for Call<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_result(f, &self.result)?;
         write!(f, "call {} {}(", self.ret_ty, self.func)?;
         let mut first = true;
         for arg in &self.args {
@@ -452,8 +413,4 @@ impl fmt::Display for CondBr<'_> {
             self.cond, self.label_true, self.label_false,
         )
     }
-}
-
-fn fmt_result(f: &mut fmt::Formatter<'_>, result: &LocalVar) -> fmt::Result {
-    write!(f, "{} = ", result)
 }

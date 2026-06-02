@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::{syntax::inst::Inst, util::make_enum};
+use crate::{syntax::inst::InstData, util::make_enum};
 
 // TODO:
 // - Implement type checking: it needs unification for 0-element arrays and
@@ -50,7 +50,7 @@ pub struct BBlock<'s> {
     /// The basic block label.
     pub label: LocalVar<'s>,
     /// The instructions in the basic block.
-    pub insts: Vec<Inst<'s>>,
+    pub insts: Vec<InstData<'s>>,
 }
 
 /// A global variable (`@`).
